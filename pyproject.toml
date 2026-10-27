@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "2dtovoxel"
+version = "0.2.0"
+description = "Turn a reference image into a MagicaVoxel model: Claude writes a voxel build script and refines it against the reference."
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "NangManCatDev"}]
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "Pillow>=10.0", "scipy>=1.10"]
+keywords = ["voxel", "magicavoxel", "vox", "claude", "pixel-art", "sprites", "gamedev"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+    "Topic :: Games/Entertainment",
+]
+
+[project.urls]
+Homepage = "https://github.com/NangManCatDev/2DtoVoxel"
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+voxtool = "voxtool.__main__:main"
+
+[tool.setuptools]
+packages = ["voxtool", "voxtool.ui"]
+
+[tool.setuptools.package-data]
+voxtool = ["mv_screenshot.ps1"]
+"voxtool.ui" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

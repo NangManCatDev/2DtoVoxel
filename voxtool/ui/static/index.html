@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="token" content="{{TOKEN}}">
+<title>2DtoVoxel</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 28 9.5v13L16 29 4 22.5v-13z' fill='%230b8691'/%3E%3Cpath d='M16 16 28 9.5M16 16 4 9.5M16 16v13' stroke='%23fff' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#/">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 28 9.5v13L16 29 4 22.5v-13z" class="cube"/><path d="M16 16 28 9.5M16 16 4 9.5M16 16v13" class="cube-line"/></svg>
+    2DtoVoxel
+  </a>
+  <div class="top-right">
+    <div class="env" id="env"></div>
+    <select id="lang" class="lang-select"></select>
+  </div>
+</header>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="btn primary block" href="#/new" data-i18n="nav.new">+ New model</a>
+    <h3 data-i18n="nav.models">Models</h3>
+    <ul id="model-list" class="model-list"></ul>
+    <h3 data-i18n="nav.jobs">Recent jobs</h3>
+    <ul id="job-list" class="job-list"></ul>
+  </aside>
+  <main id="main"></main>
+</div>
+<div id="toasts" class="toasts"></div>
+<div id="lightbox" class="lightbox" hidden><img alt=""></div>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

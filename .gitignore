@@ -1,0 +1,21 @@
+# generated files (rebuilt on demand); models/*.base.vox are sources, keep them
+output/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+
+# local Claude Code settings
+.claude/settings.local.json
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
