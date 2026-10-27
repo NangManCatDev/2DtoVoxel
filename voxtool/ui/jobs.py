@@ -25,6 +25,7 @@ from .i18n import UserError
 ROOT = Path.cwd().resolve()          # the workspace: models/, reference/, output/
 JOBS_DIR = ROOT / "output" / "_jobs"
 SCORE_RE = re.compile(r"score: iou=([\d.]+) dE=([\d.]+)(.*)")
+SHELL_TOOLS = ("Bash", "PowerShell")  # Claude Code on Windows offers both shells
 
 
 # ---------------------------------------------------------------- how Claude calls voxtool
@@ -53,13 +54,16 @@ def voxtool_command() -> str:
 
 def allowed_tools(name: str) -> list[str]:
     """What a headless run for model `name` may do; anything else is denied (permission
-    mode dontAsk). File edits only in its own script and output/, Bash only voxtool
-    commands (no `-c` code), and build/score only for this model, so a job can neither
-    change shared code nor rebuild (overwrite) another model's .vox."""
+    mode dontAsk). File edits only in its own script and output/, shell commands only
+    voxtool (no `-c` code), and build/score only for this model, so a job can neither
+    change shared code nor rebuild (overwrite) another model's .vox. The shell rules are
+    given for every tool in SHELL_TOOLS: a command sent through a shell tool without rules
+    is denied, even when the same command is allowed for the other one."""
     vt, script = voxtool_command(), f"models/{name}.py"
-    own = [f"Bash({vt} {cmd} {script}:*)" for cmd in ("build", "angles", "score", "fit-camera")]
-    return ["Read", "Glob", "Grep", "Skill", f"Edit({script})", "Edit(output/**)", *own,
-            f"Bash({vt} ref:*)", f"Bash({vt} render:*)", f"Bash({vt} compare:*)", "Bash(ls:*)"]
+    commands = [*(f"{vt} {cmd} {script}" for cmd in ("build", "angles", "score", "fit-camera")),
+                f"{vt} ref", f"{vt} render", f"{vt} compare", "ls"]
+    return ["Read", "Glob", "Grep", "Skill", f"Edit({script})", "Edit(output/**)",
+            *(f"{tool}({c}:*)" for tool in SHELL_TOOLS for c in commands)]
 
 
 # ---------------------------------------------------------------- prompts
@@ -71,7 +75,7 @@ PROMPTS = {
 This job was started automatically by the 2DtoVoxel web UI. You cannot ask the user questions, so use your judgment and carry it through to the end.
 - The working directory is already the project root. Run voxtool exactly as `{vt} ...`.
 - You may only create or edit models/{name}.py and files under output/. Do not modify voxtool/, CLAUDE.md, .claude/ or other models; if the library lacks something, write a helper function inside models/{name}.py.
-- Bash allows only `{vt} build|angles|score|fit-camera models/{name}.py ...`, `{vt} ref|render|compare ...` and `ls ...` (no `-c` code, no other scripts, no cd or && chaining).
+- The shell (Bash or PowerShell) allows only `{vt} build|angles|score|fit-camera models/{name}.py ...`, `{vt} ref|render|compare ...` and `ls ...` (no `-c` code, no other scripts, no cd or && chaining).
 - Never build another model: that would overwrite its .vox, which may contain the user's hand edits.
 - Each build prints `score: iou=… dE=… worst: …` (silhouette overlap with the reference, colour difference, worst regions) and writes output/{name}/{name}_score.png (red = missing, blue = extra). Use the numbers together with the images; stop iterating when the score stops improving for two builds in a row.{limit}
 - Put any temporary files in output/_scratch/.
@@ -98,7 +102,7 @@ _score.png and _sheet.png with Read → repeat until the request is met. Leave u
 이 작업은 2DtoVoxel 웹 UI가 자동으로 실행했다. 사용자에게 질문할 수 없으니 합리적으로 판단해 끝까지 진행해.
 - 작업 디렉터리는 이미 프로젝트 루트다. voxtool은 정확히 `{vt} ...` 형태로 실행한다.
 - 만들거나 고칠 수 있는 파일은 models/{name}.py 와 output/ 아래뿐이다. voxtool/, CLAUDE.md, .claude/, 다른 모델은 수정하지 마. 라이브러리에 없는 기능은 models/{name}.py 안에 헬퍼 함수로 작성해.
-- Bash는 `{vt} build|angles|score|fit-camera models/{name}.py ...`, `{vt} ref|render|compare ...`, `ls ...`만 허용된다(`-c` 코드, 다른 스크립트, cd, && 연결 불가).
+- 셸(Bash 또는 PowerShell)은 `{vt} build|angles|score|fit-camera models/{name}.py ...`, `{vt} ref|render|compare ...`, `ls ...`만 허용된다(`-c` 코드, 다른 스크립트, cd, && 연결 불가).
 - 다른 모델은 절대 빌드하지 마. 그 모델의 .vox(사용자가 손으로 고친 내용이 있을 수 있음)를 덮어쓴다.
 - 빌드할 때마다 `score: iou=… dE=… worst: …`(레퍼런스와의 실루엣 겹침, 색 차이, 가장 어긋난 영역)가 출력되고 output/{name}/{name}_score.png(빨강=빠짐, 파랑=넘침)가 만들어진다. 숫자와 이미지를 함께 보고 고치고, 점수가 두 번 연속 오르지 않으면 반복을 멈춰라.{limit}
 - 임시 파일이 필요하면 output/_scratch/ 에 둔다.
@@ -394,7 +398,7 @@ class JobManager:
                     job.add("error", body[:1500])
                 elif body and not body.startswith("<") and len(body) < 4000:
                     job.add("output", body[:1500])
-                if tool == "Bash" and not c.get("is_error") and self._is_own_build(job, inp.get("command", "")):
+                if tool in SHELL_TOOLS and not c.get("is_error") and self._is_own_build(job, inp.get("command", "")):
                     self._on_build(job, body)
         elif t == "result":
             ok = not ev.get("is_error") and ev.get("subtype") == "success"
@@ -453,8 +457,8 @@ class JobManager:
     # ------------------------------------------------------------ log entries for tools
 
     def _tool_entry(self, job: Job, name: str, inp: dict):
-        if name == "Bash":
-            job.add("tool", inp.get("command", ""), tool="Bash")
+        if name in SHELL_TOOLS:
+            job.add("tool", inp.get("command", ""), tool=name)
         elif name in ("Read", "Write", "Edit"):
             fp = inp.get("file_path", "")
             entry = {"tool": name}

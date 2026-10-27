@@ -6,6 +6,8 @@
 - Added `CONTRIBUTING.md`, `.github/repo-meta.yml` (About description and topics) and a logo.
 - README shows a real generation run (scores per build, time, cost) with an animation of each build.
 - `CLAUDE.md` is now in English.
+- UI jobs on Windows: the voxtool permission rules now also cover Claude Code's PowerShell tool. Commands sent through it used to be denied (Claude retried them with Bash), and builds run through it were not snapshotted or counted toward the build limit.
+- `SECURITY.md` and the README now say what the job allow-list does not do: the model script is Python that `build` runs with your rights, so the allow-list prevents mistakes but is not a sandbox.
 
 ## 0.2.0
 

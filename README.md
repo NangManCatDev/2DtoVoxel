@@ -163,7 +163,7 @@ Red status chips, a score that looks off, a failed job, and platform questions (
 
 ## Security
 
-The UI listens on 127.0.0.1 only, and every change needs a token created at launch. Each Claude job may only edit its own model script and `output/`, and run voxtool commands for that model; everything else is refused. Only use reference images you trust.
+The UI listens on 127.0.0.1 only, and every change needs a token created at launch. Each Claude job may only edit its own model script and `output/`, and run voxtool commands for that model; everything else is refused. This prevents mistakes but is not a sandbox: the model script is Python that `build` runs with your rights, so only use reference images you trust.
 → [SECURITY.md](SECURITY.md)
 
 ## Contributing

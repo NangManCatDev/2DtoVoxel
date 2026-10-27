@@ -34,8 +34,10 @@ When a new reference comes in, follow the `/voxelize <image path>` skill (`.clau
 
 ## Permissions of UI jobs (important)
 When the UI runs Claude it uses `--permission-mode dontAsk` and allows only `allowed_tools(name)` from
-`voxtool/ui/jobs.py`: file edits only in `models/<name>.py` and `output/**`; Bash only
+`voxtool/ui/jobs.py`: file edits only in `models/<name>.py` and `output/**`; shell commands only
 `<VT> build|angles|score|fit-camera models/<name>.py`, `<VT> ref|render|compare` and `ls` (no `-c` code).
+Every shell rule exists for both Bash and PowerShell (`SHELL_TOOLS`): Claude Code on Windows has a PowerShell tool,
+and a command sent through a shell tool without rules is denied even if the other one allows it.
 `<VT>` is picked per OS by `voxtool_command()` (Windows `py -m voxtool`, otherwise `python3 -m voxtool`) — the prompt
 and the permission rules must contain the same string.
 So the skill/CLI workflow must work with voxtool commands only (no `cd`, `&&` or `-c`), and features the library lacks

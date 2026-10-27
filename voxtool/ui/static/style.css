@@ -246,7 +246,7 @@ details.doc pre { white-space: pre-wrap; margin: 8px 0 0; color: var(--muted); }
   flex: none; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 5px;
   background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
 }
-.entry.tool .badge.Bash { color: var(--accent); }
+.entry.tool .badge.Bash, .entry.tool .badge.PowerShell { color: var(--accent); }
 .entry.tool .badge.Write, .entry.tool .badge.Edit { color: var(--warn); }
 .entry.tool .cmd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .entry.tool img {

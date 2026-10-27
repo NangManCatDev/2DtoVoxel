@@ -20,8 +20,10 @@ def test_permissions_are_scoped_to_one_model():
     assert vt.endswith("-m voxtool")
     assert "Edit(models/hut.py)" in tools and "Edit(output/**)" in tools
     assert "Edit" not in tools and "Write" not in tools          # no unscoped file writes
-    assert f"Bash({vt} build models/hut.py:*)" in tools
-    assert not any(t.startswith("Bash(py:") or t == "Bash" for t in tools)
+    for shell in jobs.SHELL_TOOLS:                                # same rules for Bash and PowerShell
+        assert f"{shell}({vt} build models/hut.py:*)" in tools
+        assert f"{shell}({vt} ref:*)" in tools
+        assert not any(t.startswith(f"{shell}(py:") or t == shell for t in tools)
 
 
 @pytest.mark.parametrize("lang", ["en", "ko"])
@@ -43,10 +45,10 @@ def manager(tmp_path, monkeypatch):
     return jobs.JobManager(lambda p: "/files/" + p.relative_to(tmp_path).as_posix())
 
 
-def _fake_build(mgr, job, tool_id, output):
+def _fake_build(mgr, job, tool_id, output, tool="Bash"):
     vt = jobs.voxtool_command()
     mgr._handle_event(job, {"type": "assistant", "message": {"content": [
-        {"type": "tool_use", "id": tool_id, "name": "Bash", "input": {"command": f"{vt} build models/hut.py"}}]}})
+        {"type": "tool_use", "id": tool_id, "name": tool, "input": {"command": f"{vt} build models/hut.py"}}]}})
     mgr._handle_event(job, {"type": "user", "message": {"content": [
         {"type": "tool_result", "tool_use_id": tool_id, "content": output}]}})
 
@@ -57,10 +59,11 @@ def test_builds_become_iterations_and_restore_brings_a_version_back(manager, tmp
     (tmp_path / "models" / "hut.py").write_text("VERSION = 2\n", encoding="utf-8")
     _fake_build(manager, job, "t1", "built hut\nscore: iou=0.812 dE=14.3 worst: top missing 12%")
     (tmp_path / "models" / "hut.py").write_text("VERSION = 3\n", encoding="utf-8")
-    _fake_build(manager, job, "t2", "built hut\nscore: iou=0.901 dE=9.0")
+    _fake_build(manager, job, "t2", "built hut\nscore: iou=0.901 dE=9.0", tool="PowerShell")
     job.finish("done")
 
     assert [i["n"] for i in job.iterations] == [0, 1, 2]
+    assert [e["text"] for e in job.log if e.get("tool") == "PowerShell"] == [f"{jobs.voxtool_command()} build models/hut.py"]
     assert job.iterations[1]["iou"] == 0.812 and job.iterations[1]["worst"] == "top missing 12%"
     assert job.summary()["best_iou"] == 0.901
     assert any(e["kind"] == "iteration" for e in job.log)
