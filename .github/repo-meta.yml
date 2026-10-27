@@ -1,0 +1,25 @@
+# GitHub "About" box: description and topics.
+# Apply in the repository's About settings (gear icon), or with: gh repo edit --description "..." --add-topic ...
+description: >-
+  Turn a reference image into an editable MagicaVoxel model. Claude writes a voxel build script,
+  scores each build against your image and keeps fixing it. Web UI, CLI and Claude Code skill;
+  quick pixel-art conversion, sprite sheets and GLB/OBJ export.
+topics:
+  # what it is
+  - voxel
+  - magicavoxel
+  - voxel-art
+  - image-to-3d
+  - vox
+  # how it works
+  - claude
+  - claude-code
+  - agent-skill
+  - python
+  # what people use it for
+  - gamedev
+  - game-assets
+  - pixel-art
+  - sprite-sheet
+  - gltf
+  - procedural-generation

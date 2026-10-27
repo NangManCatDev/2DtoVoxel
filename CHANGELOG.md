@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- README rewritten with [readme-craft](https://github.com/motiful/readme-craft): logo, why / features / when to use / quick start up front, and the details moved to `docs/` (how it works, model scripts, command line, troubleshooting), in English and Korean.
+- Added `CONTRIBUTING.md`, `.github/repo-meta.yml` (About description and topics) and a logo.
+- README shows a real generation run (scores per build, time, cost) with an animation of each build.
+- `CLAUDE.md` is now in English.
+
 ## 0.2.0
 
 ### Quality of the build loop

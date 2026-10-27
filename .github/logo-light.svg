@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="2DtoVoxel">
+  <path d="M60 10 103 35 60 60 17 35z" fill="#1ba3ad"/>
+  <path d="M17 35 60 60 60 110 17 85z" fill="#0b8691"/>
+  <path d="M60 60 103 35 103 85 60 110z" fill="#066a73"/>
+  <g stroke="#ffffff" stroke-opacity=".38" stroke-width="2" fill="none" stroke-linecap="round">
+    <path d="M81.5 22.5 38.5 47.5M38.5 22.5 81.5 47.5"/>
+    <path d="M38.5 47.5V97.5M17 60 60 85"/>
+    <path d="M81.5 47.5V97.5M60 85 103 60"/>
+  </g>
+  <path d="M60 10 103 35 103 85 60 110 17 85 17 35z" fill="none" stroke="#04545b" stroke-width="2" stroke-linejoin="round"/>
+</svg>
