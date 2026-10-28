@@ -14,10 +14,13 @@ Every model is a Python file in `models/`. Claude writes and edits these scripts
 | `VIEW` | no | Preview camera, e.g. `{"azimuth": 36, "elevation": 18, "fov": 0}`. Azimuth 0 looks straight at the front, 90 at the left side; `fov` > 0 is a perspective camera |
 | `SCORE_VIEW` | no | Camera used for scoring if it differs from `VIEW` (conversions score from the front) |
 | `CUTOUT` | no | Background-removal settings, e.g. `{"keep": "all"}` for a sheet with several objects |
+| `RES` | no | Voxels per design unit, used as `Model(..., res=RES)`; `voxtool build --res N` overrides it (see [High-resolution models](#high-resolution-models)) |
 
 ## Coordinates
 
-`x` goes right, `y` goes into the scene (**`y = 0` is the front**, the side MagicaVoxel's default camera looks at), and `z` goes up. Boxes are given as position + size: `box(x, y, z, w, d, h, color)` fills `x … x+w-1` and so on. Anything outside the grid is clipped. A `region=` argument is always `(x, y, z, w, d, h)`. Each saved object can be at most 256 voxels per axis, with up to 255 colours.
+`x` goes right, `y` goes into the scene (**`y = 0` is the front**, the side MagicaVoxel's default camera looks at), and `z` goes up. Boxes are given as position + size: `box(x, y, z, w, d, h, color)` fills `x … x+w-1` and so on. Anything outside the grid is clipped. A `region=` argument is always `(x, y, z, w, d, h)`. Up to 255 colours.
+
+A `.vox` object holds at most 256 voxels per axis. Bigger grids, or parts bigger than that, are cut into tiles of 256 when saved and kept together in a MagicaVoxel group, so you can still move them as one. MagicaVoxel shows scenes up to about 2048 voxels per axis.
 
 ## Example
 
@@ -55,6 +58,29 @@ Save it as `models/tiny_hut.py` and run `voxtool build models/tiny_hut.py --open
 
 For a full, real example (quoins, crow-stepped parapet, awning, lanterns, planters, vines) see [models/player_house.py](../models/player_house.py).
 
+## High-resolution models
+
+Three tools work together when you want more detail than a ~100-voxel model holds:
+
+1. **`res`: same script, finer voxels.** Write the script in design units as usual, add `RES = 1` at the top and create the model with `Model(w, d, h, res=RES)`. Every coordinate stays the same, but each design voxel becomes `RES × RES × RES` voxels: round shapes, roofs and bushes get smoother and textures finer. Iterate at `RES = 1` (fast), try the final resolution with `voxtool build models/<name>.py --res 3`, and when you like it set `RES = 3` in the script (`--res` only applies to that one build, so a later rebuild would go back to 1). Code that indexes `m.v` directly works in voxels, so multiply by `m.res` there.
+2. **`paint_reference`: colours from the picture.** Once the shape is final, `m.paint_reference(REFERENCE, VIEW)` as the last line of `build()` reads the reference's own pixels through the fitted camera (with the score's alignment) and paints every voxel it shows: shading, stains, patterns and gradients you'd never place by hand. Voxels the reference doesn't show keep their colours, glowing colours are left alone, and a colour that differs too much from a voxel's own (`tol`) is skipped, so where the shape is a little off a wall doesn't take the colour of the bush in front of it. It works best when the silhouette already matches well (IoU ≥ 0.95); with a looser fit it smears.
+3. **`score --zoom`: check details at full size.** The score compares at 320 px, which hides small things. `voxtool score models/<name>.py --zoom top-right` (any region from the score's `worst:` list, or `x0,y0,x1,y1` in reference pixels as read with `ref grid`) shows that area of the reference, the build and their difference at the reference's own resolution.
+
+What `paint_reference` did on two real models:
+
+| Model | Silhouette match (IoU) | Colour difference (ΔE) before → after |
+|---|---|---|
+| Paving slab generated in the UI | 0.969 | 5.2 → 2.3 |
+| Hand-written player house | 0.899 | 20.0 → 18.3 (the shape is further off, so `tol` keeps most colours) |
+
+The player house at `--res 1`, `2` and `3` (125 thousand, 1 million and 3.4 million voxels; the shapes stay put, bushes and textures get finer):
+
+![The player house built at res 1, 2 and 3](images/res.jpg)
+
+`score --zoom bottom-right` on it shows what the full-image score can't: the reference's bushes spill over the planter and its face has cracks, while the build has a tidy hedge and a zigzag groove:
+
+![Zoomed comparison of the planter: reference, build and difference](images/zoom.jpg)
+
 ## DSL reference
 
 All methods live on `Model` ([voxtool/model.py](../voxtool/model.py)). `c` is a palette name, a palette index, or `None` (carve).
@@ -82,8 +108,10 @@ All methods live on `Model` ([voxtool/model.py](../voxtool/model.py)). `c` is a 
 | | `vine(x, y, z, length, colors, wall="-y", drift=0.35, leaf=0.6, spread=1)` | Vine hanging down a wall |
 | | `sprinkle(colors, prob, target, region=None)` | Recolour random surface voxels (flowers in a bush) |
 | | `scatter_on_top(region, colors, prob, target=None)` | Place voxels on top of exposed surfaces |
+| Reference colours | `paint_reference(reference, view, colors=96, tol=30, only=None, blend=1.0, cutout=None)` | Paint the voxels the reference shows with its own pixels (call last); new colours are named `<colour>_r1`, … |
+| Model | `Model(w, d, h, seed=0, res=1)` | Grid in design units; `res` voxels per unit (`m.res`, `m.dims`; `m.size` is the voxel grid) |
 | Objects & files | `with m.part(name): ...` | Voxels drawn inside become a separate object in the `.vox` (kit sheets) |
-| | `Model.from_vox(path)` / `m.paste_vox(path, x, y, z)` | Start from / paste in an existing `.vox` (a conversion, or a MagicaVoxel edit) |
+| | `Model.from_vox(path, res=1)` / `m.paste_vox(path, x, y, z)` | Start from / paste in an existing `.vox` (a conversion, or a MagicaVoxel edit) |
 | Transform & output | `mirror_x(x0, x1)` / `copy(x, y, z, w, d, h, dx, dy, dz)` | Mirror or duplicate a region |
 | | `stats()` / `save(path)` | Summary (voxel count per colour) / write a `.vox` (backs up a MagicaVoxel-saved file first) |
 

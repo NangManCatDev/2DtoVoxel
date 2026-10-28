@@ -35,6 +35,7 @@ Turning concept art into voxels by hand means hours of placing blocks and eyebal
 - **Editable, not baked.** The result is a `.vox` plus a short build script. Ask for changes in plain words ("make the awning bigger") or edit it yourself.
 - **Watch it work, rewind any time.** A live log shows every build with its score, and any earlier version is one click away.
 - **Same camera as the reference.** The camera angle and perspective are fitted automatically, so comparisons are like for like.
+- **High resolution when you want it.** Iterate small, then build the final model at 2–3× resolution, paint colour detail straight from your image, and zoom into any area at full size. Models over 256 voxels per axis are split into MagicaVoxel objects for you.
 - **Pixel art in seconds, no Claude needed.** Sprites and icons become flat or rounded voxel models; front/side/top drawings can be carved into one.
 - **Game-ready exports.** 8-direction sprite sheets with a manifest, GLB / OBJ / PLY meshes, and palette variants.
 - **Safe to leave running.** The UI stays on your computer, each job can only touch its own model, cost and build limits are per job, and files you edited in MagicaVoxel are backed up before a rebuild.
@@ -44,7 +45,7 @@ Turning concept art into voxels by hand means hours of placing blocks and eyebal
 
 Use 2DtoVoxel when you have an image of **one object** (concept art, a render, a cropped game screenshot, pixel art) and want it as a voxel model in MagicaVoxel.
 
-It is not for whole scenes or landscapes as one model, exact 3D reconstruction from photos, animation, or pieces larger than 256 voxels per axis (split those into parts).
+It is not for whole scenes or landscapes as one model, exact 3D reconstruction from photos, animation, or models beyond MagicaVoxel's scene size (about 2048 voxels per axis).
 
 ## Quick Start
 

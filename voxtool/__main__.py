@@ -34,7 +34,7 @@ import numpy as np
 
 from .reftools import crop, cutout, dominant_colors, grid_overlay, sample, side_by_side, swatches
 from .render import render_iso, render_sheet
-from .vox_io import VoxModel, VoxScene, merge_models, read_vox, write_vox
+from .vox_io import WORLD_DIM, VoxScene, merge_models, read_vox, split_grid, write_vox
 
 ROOT = os.getcwd()
 OUT = os.path.join(ROOT, "output")
@@ -103,6 +103,17 @@ def load_script(path: str):
     return mod
 
 
+def load_model_script(path: str, res: int | None = None):
+    """load_script with the --res override; the script's build() must use RES (Model(..., res=RES))."""
+    mod = load_script(path)
+    if res:
+        if not hasattr(mod, "RES"):
+            raise RuntimeError(f"{path} has no RES constant: add RES = 1 at the top and build with "
+                               f"Model(..., res=RES) to use --res")
+        mod.RES = res
+    return mod
+
+
 def script_view(mod, key: str = "VIEW") -> dict:
     view = {"azimuth": 30.0, "elevation": 30.0, "fov": 0.0}
     view.update(getattr(mod, key, None) or getattr(mod, "VIEW", {}) or {})
@@ -159,7 +170,7 @@ def _score(mod, name, m, out_dir, emissive, *, quiet=False):
 
 
 def cmd_build(a):
-    mod = load_script(a.script)
+    mod = load_model_script(a.script, getattr(a, "res", None))
     name = getattr(mod, "NAME", _stem(a.script))
     view = script_view(mod)
     if a.az is not None:
@@ -176,6 +187,8 @@ def cmd_build(a):
         print(f"backup: the previous {name}.vox had MagicaVoxel edits -> {backup}")
     print(f"built {name} in {time.time() - t:.1f}s -> {vox}")
     print(m.stats())
+    if max(m.v.shape) > WORLD_DIM:
+        print(f"note: the grid {m.v.shape} is over {WORLD_DIM} on an axis; MagicaVoxel cuts off what lies beyond")
 
     emissive = {i for i in m.pal.materials if m.pal.is_emissive(i)}
     pal = m.pal.rgba
@@ -197,10 +210,22 @@ def cmd_build(a):
 
 
 def cmd_score(a):
-    mod = load_script(a.script)
+    mod = load_model_script(a.script, a.res)
     name = getattr(mod, "NAME", _stem(a.script))
     m = mod.build()
     emissive = {i for i in m.pal.materials if m.pal.is_emissive(i)}
+    if a.zoom:
+        from .score import zoom_image
+        ref = getattr(mod, "REFERENCE", None)
+        if not ref or not os.path.isfile(os.path.join(ROOT, ref)):
+            raise RuntimeError("the script has no REFERENCE image to zoom into")
+        met, img = zoom_image(m.v, m.pal.rgba, emissive, os.path.join(ROOT, ref), script_view(mod, "SCORE_VIEW"),
+                              a.zoom, cutout_kw=getattr(mod, "CUTOUT", None), cache_dir=REF_CACHE)
+        out = os.path.join(_out_dir(name), f"{name}_zoom_{a.zoom.replace(',', '_').replace(' ', '')}.png")
+        img.save(out)
+        print(f"zoom {a.zoom} {tuple(met['box'])}: iou={met['iou']:.3f} dE={met['delta_e']:.1f}")
+        print(f"zoom     -> {out}")
+        return
     met = _score(mod, name, m, _out_dir(name), emissive)
     if met is None:
         raise RuntimeError("the script has no REFERENCE image to score against")
@@ -383,7 +408,7 @@ def cmd_recolor(a):
     d = _out_dir(t.name, "variants")
     for label, pal in variants:
         base = os.path.join(d, f"{t.name}_{label}")
-        write_vox(base + ".vox", VoxScene([VoxModel(t.v)], pal, t.materials))
+        write_vox(base + ".vox", VoxScene(split_grid(t.v), pal, t.materials))
         render_iso(t.v, pal, emissive=t.emissive, **t.view).save(base + "_iso.png")
         print(f"variant  -> {base}.vox")
 
@@ -417,10 +442,14 @@ def main(argv=None):
     b.add_argument("--az", type=float)
     b.add_argument("--el", type=float)
     b.add_argument("--scale", type=int, default=8)
+    b.add_argument("--res", type=int, help="override the script's RES (voxels per design unit)")
     b.set_defaults(fn=cmd_build)
 
     s = sub.add_parser("score", help="measure the match with REFERENCE")
     s.add_argument("script")
+    s.add_argument("--res", type=int, help="override the script's RES (voxels per design unit)")
+    s.add_argument("--zoom", help="close-up at full reference resolution: a region (top-left, top, ... "
+                                  "bottom-right) or x0,y0,x1,y1 in reference pixels")
     s.set_defaults(fn=cmd_score)
 
     fc = sub.add_parser("fit-camera", help="find the VIEW that best matches REFERENCE")

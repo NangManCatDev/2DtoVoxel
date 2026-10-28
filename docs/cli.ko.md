@@ -8,8 +8,8 @@
 
 | 명령 | 하는 일 |
 |---|---|
-| `voxtool build models/<이름>.py [--open] [--no-score]` | `output/<이름>/`에 빌드(`.vox`, 미리보기, 비교, 점수). `--open`은 MagicaVoxel에서 열기 |
-| `voxtool score models/<이름>.py` | `REFERENCE`와 비교한 점수를 JSON으로 출력 |
+| `voxtool build models/<이름>.py [--open] [--no-score] [--res N]` | `output/<이름>/`에 빌드(`.vox`, 미리보기, 비교, 점수). `--open`은 MagicaVoxel에서 열기. `--res`는 스크립트의 `RES`를 덮어씀(설계는 그대로, 복셀만 더 곱게) |
+| `voxtool score models/<이름>.py [--res N] [--zoom 영역]` | `REFERENCE`와 비교한 점수를 JSON으로 출력. `--zoom top-right`(점수의 3×3 영역 이름)나 `--zoom x0,y0,x1,y1`(레퍼런스 픽셀 좌표)을 주면 대신 레퍼런스 원래 해상도의 확대 비교를 만듦 → `_zoom_<영역>.png` |
 | `voxtool fit-camera models/<이름>.py [--fovs 0,25,45]` | 가장 잘 맞는 `VIEW`를 찾고 `_fit.png` 작성 |
 | `voxtool angles models/<이름>.py 30,20 42,15,30` | `az,el[,fov]` 카메라들을 레퍼런스 옆에 렌더 → `_angles.png` |
 | `voxtool render <파일.vox> [--az 30 --el 30 --fov 0]` | 아무 `.vox`(MagicaVoxel이 만든 파일 포함)의 미리보기 시트 |
@@ -34,6 +34,7 @@
 | `<이름>_iso.png`, `_sheet.png` | 3/4 미리보기, 전체 뷰 |
 | `<이름>_compare.png`, `_score.png`, `_scores.jsonl` | 레퍼런스 비교, 차이 이미지, 점수 기록 |
 | `<이름>_angles.png`, `_fit.png` | 카메라 각도 비교, 카메라 맞춤 |
+| `<이름>_zoom_<영역>.png` | `score --zoom`의 확대 비교 |
 | `<이름>_edited_<시각>.vox` | MagicaVoxel에서 저장했던 파일의 백업 |
 | `sprites/`, `export/`, `variants/` | 스프라이트 시트 + manifest, 메시, 팔레트 변형 |
 

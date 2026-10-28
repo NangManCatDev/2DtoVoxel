@@ -14,15 +14,20 @@ When a new reference comes in, follow the `/voxelize <image path>` skill (`.clau
 - Tests: `py -m pytest -q` (tests/ really runs the CLI and the server in temporary workspaces). CI: `.github/workflows/ci.yml`.
 
 ## Layout
-- `voxtool/vox_io.py` — .vox read/write (SIZE/XYZI/RGBA/MATL + scene graph). Max 256 per axis per object.
+- `voxtool/vox_io.py` — .vox read/write (SIZE/XYZI/RGBA/MATL + scene graph). Max 256 per axis per object
+  (`MAX_DIM`); `split_grid()` cuts a bigger grid into tiles, and `VoxModel.group` puts them in a named nGRP (every
+  writer must go through it). `WORLD_DIM` = 2048, MagicaVoxel's scene extent.
   `backup_if_edited()`: if the file was saved by MagicaVoxel (it has chunks our writer never writes, like rOBJ/rCAM),
   copy it before overwriting.
 - `voxtool/model.py` — building DSL (`Model`, `Palette`). Primitives, architecture, organic helpers, `part()`,
-  `from_vox()/paste_vox()`.
-- `voxtool/render.py` — `Camera` (orthographic / perspective `fov`), `render_iso` (transparent and crisp modes),
-  sheet with 5 orthographic views.
-- `voxtool/reftools.py` — reference study tools (grid, crop, colour samples, palette) + `cutout()` background removal.
-- `voxtool/score.py` — `score_model` (silhouette IoU, colour ΔE, missing/extra per 3×3 region, diff image), `fit_camera`.
+  `from_vox()/paste_vox()`, `paint_reference()`. `Model(..., res=r)`: design units → r× finer voxels.
+  `to_scene()` cuts objects over 256 into grouped tiles (`split_grid`).
+- `voxtool/render.py` — `Camera` (orthographic / perspective `fov`), `render_iso` (transparent and crisp modes; over
+  `POLY_LIMIT` visible faces a numpy z-buffer `_raster` replaces PIL polygons; capped at `MAX_PX`), `face_buffer`,
+  `coarsen`, sheet with 5 orthographic views.
+- `voxtool/reftools.py` — reference study tools (grid, crop, colour samples, palette, `quantize`) + `cutout()`.
+- `voxtool/score.py` — `score_model` (silhouette IoU, colour ΔE, missing/extra per 3×3 region, diff image), `fit_camera`,
+  `place_on_reference` (model over the full-size reference) → `reference_colors` (for paint) and `zoom_image`.
 - `voxtool/convert.py` — conversions without Claude: `extrude` (pixel-art slab / inflate), `carve` (multi-view silhouette
   intersection).
 - `voxtool/export.py` — greedy meshing → OBJ/PLY/GLB, sprite sheet + manifest.json, palette variants.
@@ -62,8 +67,8 @@ and rebuilt another model, overwriting the user's MagicaVoxel edits.)
 
 ## CLI (`VT` = `py -m voxtool` / `python3 -m voxtool` / `voxtool`)
 ```
-VT build models/<name>.py [--open] [--no-score]    # .vox + previews + score (if there is a REFERENCE)
-VT score models/<name>.py                          # score only (JSON)
+VT build models/<name>.py [--open] [--no-score] [--res N]   # .vox + previews + score (if there is a REFERENCE)
+VT score models/<name>.py [--res N] [--zoom AREA]  # score only (JSON); --zoom: full-size close-up of one area
 VT fit-camera models/<name>.py [--fovs 0,25,45]    # prints the best-fitting VIEW + _fit.png
 VT angles models/<name>.py 30,20 42,15,30          # several az,el[,fov] next to the reference
 VT render <file.vox> [--az --el --fov]             # preview for any .vox
@@ -87,6 +92,13 @@ VT ui / VT install-skill
 - Put key dimensions in constants at the top of the script (`FLOOR`, `EAVE`, …) and derive every other coordinate from
   them, so fixing a proportion is a one-line change. (Writing literal coordinates once meant rewriting everything when
   the depth changed.)
+- `RES` (`Model(..., res=RES)`): coordinates stay in design units, the grid is res× finer. `_coords` gives each voxel's
+  low corner (`i / res`), so integer tests like `X < 5` split exactly between design voxels; round shapes use
+  `_centred` and roof slopes `_steps` so they match res 1, only smoother. Anything that indexes `m.v` is in voxels.
+  `--res` overrides RES for one build only; set RES in the script to keep it.
+- `paint_reference(REFERENCE, VIEW)` goes last in `build()`. It only helps once the silhouette fits (IoU ≳ 0.95); `tol`
+  (Lab distance, lightness at half) keeps colours from bleeding across materials. On the player house (IoU 0.90) it
+  smeared colours until `tol` was added.
 
 ## Reproducing a reference (lessons from the player house)
 - References are usually **perspective renders**. Don't measure in screen pixels; measure **relative to an element of

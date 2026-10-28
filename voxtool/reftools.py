@@ -154,6 +154,17 @@ def dominant_colors(path: str, k: int = 16, box: tuple[int, int, int, int] | Non
     return [("#%02x%02x%02x" % tuple(int(c) for c in cent[j]), float(share[j])) for j in order]
 
 
+def quantize(colors: np.ndarray, n: int = 255) -> tuple[np.ndarray, np.ndarray]:
+    """[N, 3] colours -> (index per colour [N], palette [K, 3] uint8) with K <= n (median cut)."""
+    colors = np.clip(np.round(colors), 0, 255).astype(np.uint8).reshape(-1, 3)
+    uniq, inv = np.unique(colors, axis=0, return_inverse=True)
+    if len(uniq) <= n:
+        return inv.reshape(-1), uniq
+    im = Image.fromarray(colors.reshape(1, -1, 3), "RGB").quantize(n, method=Image.MEDIANCUT)
+    pal = np.array(im.getpalette()[:n * 3], np.uint8).reshape(-1, 3)
+    return np.asarray(im).reshape(-1), pal
+
+
 def swatches(colors: list[tuple[str, float]]) -> Image.Image:
     font = _font(12)
     im = Image.new("RGB", (260, 22 * len(colors)), (255, 255, 255))

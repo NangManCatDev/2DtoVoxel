@@ -16,7 +16,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-MAX_DIM = 256
+MAX_DIM = 256       # per object: XYZI stores each coordinate in one byte
+WORLD_DIM = 2048    # MagicaVoxel 0.99's scene extent per axis (objects beyond it are cut off)
 
 # Chunks write_vox produces. MagicaVoxel adds others when it saves (rOBJ, rCAM, NOTE, ...),
 # which is how a file with hand edits is recognised before a build overwrites it.
@@ -28,6 +29,7 @@ class VoxModel:
     voxels: np.ndarray                       # uint8 [x, y, z]
     offset: tuple[int, int, int] = (0, 0, 0)  # world position of voxel (0,0,0)
     name: str = ""
+    group: str = ""                          # models with the same group sit in one named MagicaVoxel group
 
 
 @dataclass
@@ -67,22 +69,46 @@ def write_vox(path: str, scene: VoxScene) -> None:
         body += _chunk(b"SIZE", struct.pack("<iii", *v.shape))
         body += _chunk(b"XYZI", struct.pack("<i", len(xyzi)) + xyzi.tobytes())
 
-    # Scene graph: root nTRN(0) -> nGRP(1) -> [nTRN -> nSHP] per model.
-    n = len(scene.models)
-    body += _chunk(b"nTRN", struct.pack("<i", 0) + _dict({}) + struct.pack("<iiii", 1, -1, -1, 1) + _dict({}))
-    child_ids = [2 + 2 * i for i in range(n)]
-    body += _chunk(b"nGRP", struct.pack("<i", 1) + _dict({}) + struct.pack("<i", n)
-                   + b"".join(struct.pack("<i", c) for c in child_ids))
-    for i, m in enumerate(scene.models):
+    # Scene graph: root nTRN(0) -> nGRP(1) -> one [nTRN -> nSHP] per model, or for models that
+    # share a group: nTRN(name) -> nGRP -> [nTRN -> nSHP] per member (the tiles of a big object).
+    ids = iter(range(2, 1 << 30))
+
+    def shape(i: int) -> tuple[int, bytes]:
+        m = scene.models[i]
+        t, s = next(ids), next(ids)
         sx, sy, sz = m.voxels.shape
         ox, oy, oz = m.offset
         # MagicaVoxel places a model by its center: center = floor(size / 2)
-        t = f"{ox + sx // 2} {oy + sy // 2} {oz + sz // 2}"
+        tr = f"{ox + sx // 2} {oy + sy // 2} {oz + sz // 2}"
         attrs = {"_name": m.name} if m.name else {}
-        body += _chunk(b"nTRN", struct.pack("<i", child_ids[i]) + _dict(attrs)
-                       + struct.pack("<iiii", child_ids[i] + 1, -1, 0, 1) + _dict({"_t": t}))
-        body += _chunk(b"nSHP", struct.pack("<i", child_ids[i] + 1) + _dict({})
-                       + struct.pack("<ii", 1, i) + _dict({}))
+        return t, (_chunk(b"nTRN", struct.pack("<i", t) + _dict(attrs) + struct.pack("<iiii", s, -1, 0, 1)
+                          + _dict({"_t": tr}))
+                   + _chunk(b"nSHP", struct.pack("<i", s) + _dict({}) + struct.pack("<ii", 1, i) + _dict({})))
+
+    def group(name: str, members: list[int]) -> tuple[int, bytes]:
+        t, g = next(ids), next(ids)
+        kids = [shape(i) for i in members]
+        return t, (_chunk(b"nTRN", struct.pack("<i", t) + _dict({"_name": name}) + struct.pack("<iiii", g, -1, 0, 1)
+                          + _dict({}))
+                   + _chunk(b"nGRP", struct.pack("<i", g) + _dict({}) + struct.pack("<i", len(kids))
+                            + b"".join(struct.pack("<i", k) for k, _ in kids))
+                   + b"".join(c for _, c in kids))
+
+    top: list = []                       # model index, or (group name, [model indices]) in first-seen order
+    groups: dict[str, list[int]] = {}
+    for i, m in enumerate(scene.models):
+        if not m.group:
+            top.append(i)
+        elif m.group in groups:
+            groups[m.group].append(i)
+        else:
+            groups[m.group] = [i]
+            top.append((m.group, groups[m.group]))
+    children = [shape(e) if isinstance(e, int) else group(*e) for e in top]
+    body += _chunk(b"nTRN", struct.pack("<i", 0) + _dict({}) + struct.pack("<iiii", 1, -1, -1, 1) + _dict({}))
+    body += _chunk(b"nGRP", struct.pack("<i", 1) + _dict({}) + struct.pack("<i", len(children))
+                   + b"".join(struct.pack("<i", k) for k, _ in children))
+    body += b"".join(c for _, c in children)
 
     body += _chunk(b"LAYR", struct.pack("<i", 0) + _dict({}) + struct.pack("<i", -1))
 
@@ -175,28 +201,33 @@ def read_vox(path: str) -> VoxScene:
 
     offsets: dict[int, tuple[int, int, int]] = {}
     names: dict[int, str] = {}
+    groups: dict[int, str] = {}
 
-    def walk(nid: int, t: np.ndarray, name: str):
+    def walk(nid: int, t: np.ndarray, name: str, group: str):
         node = nodes.get(nid)
         if node is None:
             return
         if node[0] == "T":
             _, attrs, child, frame = node
             tt = t + np.array([int(v) for v in frame.get("_t", "0 0 0").split()])
-            walk(child, tt, attrs.get("_name", name))
+            if nid and nodes.get(child, ("",))[0] == "G":       # a named group below the root
+                group = attrs.get("_name", group)
+            walk(child, tt, attrs.get("_name", name), group)
         elif node[0] == "G":
             for c in node[1]:
-                walk(c, t, name)
+                walk(c, t, name, group)
         else:
             for mid in node[1]:
                 sx, sy, sz = sizes[mid]
                 offsets[mid] = (int(t[0]) - sx // 2, int(t[1]) - sy // 2, int(t[2]) - sz // 2)
                 names[mid] = name
+                groups[mid] = group
 
     if nodes:
-        walk(0, np.zeros(3, int), "")
+        walk(0, np.zeros(3, int), "", "")
 
-    models = [VoxModel(g, offsets.get(i, (0, 0, 0)), names.get(i, "")) for i, g in enumerate(grids)]
+    models = [VoxModel(g, offsets.get(i, (0, 0, 0)), names.get(i, ""), groups.get(i, ""))
+              for i, g in enumerate(grids)]
     return VoxScene(models, palette, materials)
 
 
@@ -223,6 +254,24 @@ def backup_if_edited(path: str) -> str | None:
     dst = f"{stem}_edited_{time.strftime('%Y%m%d-%H%M%S')}{ext}"
     shutil.copy2(path, dst)
     return dst
+
+
+def split_grid(grid: np.ndarray, offset: tuple[int, int, int] = (0, 0, 0), name: str = "") -> list[VoxModel]:
+    """One model for a grid that fits MAX_DIM per axis; otherwise blocks of at most MAX_DIM
+    (empty ones dropped) named <name>_<i>_<j>_<k> and grouped under `name` ('model' if unnamed)."""
+    if max(grid.shape) <= MAX_DIM:
+        return [VoxModel(grid, tuple(offset), name)]
+    group = name or "model"
+    out = []
+    for i in range(0, grid.shape[0], MAX_DIM):
+        for j in range(0, grid.shape[1], MAX_DIM):
+            for k in range(0, grid.shape[2], MAX_DIM):
+                block = grid[i:i + MAX_DIM, j:j + MAX_DIM, k:k + MAX_DIM]
+                if block.any():
+                    pos = (offset[0] + i, offset[1] + j, offset[2] + k)
+                    tag = f"{i // MAX_DIM}_{j // MAX_DIM}_{k // MAX_DIM}"
+                    out.append(VoxModel(np.ascontiguousarray(block), pos, f"{group}_{tag}", group))
+    return out
 
 
 def merge_models(scene: VoxScene) -> np.ndarray:

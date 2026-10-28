@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 import numpy as np
 
 from ..__main__ import find_magicavoxel, open_in_magicavoxel, screenshot_magicavoxel
+from ..render import coarsen
 from ..vox_io import merge_models, read_vox
 from .i18n import UserError, pick_lang
 from .jobs import ROOT, JobManager, find_claude, generate_prompt, refine_prompt, voxtool_command
@@ -165,23 +166,38 @@ def model_detail(slug: str) -> dict | None:
             "jobs": [j for j in JOBS.list() if j["name"] == slug][:10]}
 
 
+VIEWER_MAX = 400_000    # surface voxels the 3D viewer gets; bigger models are sent coarser
+
+
+def _surface(v: np.ndarray) -> tuple[np.ndarray, ...]:
+    filled = v > 0
+    pad = np.pad(filled, 1)
+    interior = (pad[2:, 1:-1, 1:-1] & pad[:-2, 1:-1, 1:-1] & pad[1:-1, 2:, 1:-1] &
+                pad[1:-1, :-2, 1:-1] & pad[1:-1, 1:-1, 2:] & pad[1:-1, 1:-1, :-2])
+    return np.nonzero(filled & ~interior)
+
+
 def voxel_payload(slug: str) -> dict | None:
-    """Surface voxels (x, y, z, color) as base64 for the 3D viewer."""
+    """Surface voxels (x, y, z, color) as base64 for the 3D viewer: uint8 per value, or uint16
+    coordinates for grids over 255; models with more than VIEWER_MAX surface voxels are sent
+    `step` times coarser (the .vox itself is untouched)."""
     mp = model_paths(slug)
     if not mp["vox"].exists():
         return None
     scene = read_vox(str(mp["vox"]))
     v = merge_models(scene)
-    filled = v > 0
-    pad = np.pad(filled, 1)
-    interior = (pad[2:, 1:-1, 1:-1] & pad[:-2, 1:-1, 1:-1] & pad[1:-1, 2:, 1:-1] &
-                pad[1:-1, :-2, 1:-1] & pad[1:-1, 1:-1, 2:] & pad[1:-1, 1:-1, :-2])
-    xs, ys, zs = np.nonzero(filled & ~interior)
-    quad = np.stack([xs, ys, zs, v[xs, ys, zs]], axis=1).astype(np.uint8)
+    step, shown = 1, v
+    xs, ys, zs = _surface(v)
+    if len(xs) > VIEWER_MAX:
+        step = int(np.ceil(np.sqrt(len(xs) / VIEWER_MAX)))
+        shown = coarsen(v, step)
+        xs, ys, zs = _surface(shown)
+    dtype = np.uint16 if max(shown.shape) > 255 else np.uint8
+    quad = np.stack([xs, ys, zs, shown[xs, ys, zs]], axis=1).astype(dtype)
     pal = ["#%02x%02x%02x" % tuple(int(c) for c in row[:3]) for row in scene.palette]
     emissive = [i for i, p in scene.materials.items() if p.get("_type") == "_emit"]
-    return {"size": list(v.shape), "palette": pal, "emissive": emissive,
-            "voxels": base64.b64encode(quad.tobytes()).decode("ascii"), "count": len(quad)}
+    return {"size": list(v.shape), "palette": pal, "emissive": emissive, "bits": 8 * quad.itemsize,
+            "step": step, "voxels": base64.b64encode(quad.tobytes()).decode("ascii"), "count": len(quad)}
 
 
 def list_references() -> list[dict]:

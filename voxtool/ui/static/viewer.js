@@ -9,7 +9,9 @@ export async function mountViewer(el, url, view) {
   if (!r.ok) throw new Error(data.error || r.statusText);
 
   const [sx, sy, sz] = data.size;
-  const raw = Uint8Array.from(atob(data.voxels), (c) => c.charCodeAt(0));
+  const bytes = Uint8Array.from(atob(data.voxels), (c) => c.charCodeAt(0));
+  const raw = data.bits === 16 ? new Uint16Array(bytes.buffer) : bytes;   // uint16 coords for grids over 255
+  const k = data.step || 1;                                                 // big models arrive k times coarser
   const n = raw.length / 4;
   const emissive = new Set(data.emissive);
   const pal = data.palette.map((h) => new THREE.Color(h));
@@ -17,7 +19,7 @@ export async function mountViewer(el, url, view) {
   for (let i = 0; i < n; i++) if (emissive.has(raw[i * 4 + 3])) ne++;
 
   // voxel (x, y, z) with z up and y=0 at the front -> three.js (x, z, -y), centred
-  const geo = new THREE.BoxGeometry(1, 1, 1);
+  const geo = new THREE.BoxGeometry(k, k, k);
   const solid = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial(), Math.max(n - ne, 1));
   const glow = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial(), Math.max(ne, 1));
   solid.count = n - ne; glow.count = ne;
@@ -25,7 +27,7 @@ export async function mountViewer(el, url, view) {
   let a = 0, b = 0;
   for (let i = 0; i < n; i++) {
     const x = raw[i * 4], y = raw[i * 4 + 1], z = raw[i * 4 + 2], c = raw[i * 4 + 3];
-    m4.makeTranslation(x - sx / 2 + 0.5, z + 0.5, -(y - sy / 2 + 0.5));
+    m4.makeTranslation(x * k - sx / 2 + k / 2, z * k + k / 2, -(y * k - sy / 2 + k / 2));
     if (emissive.has(c)) { glow.setMatrixAt(b, m4); glow.setColorAt(b, pal[c]); b++; }
     else { solid.setMatrixAt(a, m4); solid.setColorAt(a, pal[c]); a++; }
   }
@@ -45,7 +47,7 @@ export async function mountViewer(el, url, view) {
   el.innerHTML = '';
   el.append(renderer.domElement);
 
-  const camera = new THREE.PerspectiveCamera(32, 1, 0.5, 4000);
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.5, Math.max(4000, Math.max(sx, sy, sz) * 6));
   const controls = new OrbitControls(camera, renderer.domElement);
   const target = new THREE.Vector3(0, sz * 0.4, 0);
   const dist = Math.max(sx, sy, sz) * 1.75;
@@ -76,7 +78,7 @@ export async function mountViewer(el, url, view) {
       <button class="btn" data-v="${view?.azimuth ?? 36},${view?.elevation ?? 18}">${t('viewer.default')}</button>
       <button class="btn" data-v="0,8">${t('viewer.front')}</button><button class="btn" data-v="90,8">${t('viewer.left')}</button>
       <button class="btn" data-v="180,20">${t('viewer.back')}</button><button class="btn" data-v="0,89">${t('viewer.top')}</button></div>
-    <div class="hint">${t('viewer.hint', { n: n.toLocaleString(locale()) })}</div>`;
+    <div class="hint">${t('viewer.hint', { n: n.toLocaleString(locale()) })}${k > 1 ? ' · ' + t('viewer.coarse', { k }) : ''}</div>`;
   el.append(...ui.children);
   el.querySelectorAll('[data-v]').forEach((btn) => btn.addEventListener('click', () => place(...btn.dataset.v.split(',').map(Number))));
 

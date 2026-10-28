@@ -30,6 +30,8 @@ A script instead of hand-placed voxels means the result is exact, reproducible, 
 
 A model is a numpy array of `uint8` indexed `[x, y, z]` (0 = empty, 1–255 = palette index), plus a 256-entry RGBA palette and a material for each glowing, glass or metal colour. `Model.save()` writes MagicaVoxel's chunk format (version 200): one `SIZE` + `XYZI` pair per object, a small scene graph (`nTRN` → `nGRP` → `nTRN` → `nSHP` per object, with each object's position in its transform), `LAYR`, `RGBA` and one `MATL` per material. `m.part()` records which voxels were drawn inside each block and saves them as separate objects.
 
+`XYZI` stores each coordinate in one byte, so an object can't exceed 256 voxels per axis. A bigger grid (or part) is cut into 256-voxel tiles; empty tiles are dropped, and the rest go under one named `nGRP` so they move together in MagicaVoxel. Reading a file back merges every object into one grid by its transform. With `res`, the DSL keeps coordinates in design units and maps them onto the finer grid: boxes cover whole design voxels, while round shapes and roof slopes are evaluated per voxel, so they get smoother instead of just bigger.
+
 Before overwriting, the writer lists the chunks of the existing file. Our writer never produces `rOBJ`, `rCAM` or `NOTE`, but MagicaVoxel always does when it saves. So if any such chunk is present, the file may hold hand edits and is first copied to `<name>_edited_<time>.vox`.
 
 ## Preview renderer
@@ -38,7 +40,7 @@ The previews are drawn without a GPU, with the painter's algorithm:
 
 1. For each of the 6 face directions, find the *exposed* faces (the neighbouring cell is empty) and keep those that face the camera.
 2. Project their 4 corners. The orthographic camera uses azimuth and elevation; the perspective camera is placed so the grid's bounding sphere fits the field of view, and sizes are normalised so one voxel at the centre stays as big as in orthographic mode.
-3. Sort the faces far to near and fill them as polygons at 2× resolution, then downsample (anti-aliasing).
+3. Sort the faces far to near and fill them as polygons at 2× resolution, then downsample (anti-aliasing). Past 150,000 visible faces, drawing polygons one by one gets slow, so big models go through a numpy z-buffer instead: every face is sampled on a grid of points under a pixel apart and each pixel keeps the nearest face (a 1024 × 1024 terrain renders in about 3 seconds instead of 11). Renders are also scaled down to stay within 3000 pixels.
 4. Shade with a fixed brightness per direction (top 1.00, front 0.90, left 0.76, right 0.70, back 0.62, bottom 0.50) and ambient occlusion (−5.5 % per filled neighbour around the face). Glowing colours are not shaded.
 
 The colours you register are therefore multiplied by about 0.9 on front faces, which is why a colour sampled from the front of a reference, divided by 0.9, is a good starting value.
@@ -68,6 +70,13 @@ flowchart LR
 Aligning by area and centroid makes the score independent of the model's absolute size and position in the image; what remains is shape and colour. Wrong proportions can't hide behind the alignment: the excess shows up blue and the gaps red. ΔE is CIE76 on slightly blurred images, so texture noise matters less than overall colour; lighting differences keep it above zero even for a perfect shape.
 
 The score is an observation, not the goal: a perspective reference and an orthographic preview can't match perfectly. Use the score to find what to fix, and the images to decide how.
+
+### Close-ups and colours from the reference
+
+`score --zoom` and `paint_reference()` lay the model over the reference at its **full** resolution instead of 320 px. The model's faces are rasterised once to measure the silhouette's area and centroid, the same alignment as the score is computed from those, and the faces are rasterised again straight onto the reference canvas. That gives, for every reference pixel, the voxel face it shows.
+
+- `--zoom` crops one area of that canvas: reference, build and the difference side by side.
+- `paint_reference()` averages the reference pixels each face covers, divides by that face's preview shading (so a preview reproduces the reference), and averages a voxel's visible faces. If faces would be smaller than 1.5 pixels, the face buffer is drawn up to 4× finer so small voxels still get their own pixels. A voxel keeps its colour when the new one is too far from it (Lab distance with lightness counted at half, `tol`), which stops colours bleeding across materials where the shape is slightly off. The accepted colours are reduced per original colour (median cut) so each material keeps its own shades within the 255-colour palette.
 
 ## Camera fitting
 

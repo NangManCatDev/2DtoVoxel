@@ -14,8 +14,8 @@ import numpy as np
 from PIL import Image
 
 from .model import Model
-from .reftools import cutout
-from .vox_io import MAX_DIM
+from .reftools import cutout, quantize
+from .vox_io import WORLD_DIM
 
 
 def detect_pixel_size(rgba: np.ndarray, max_k: int = 32) -> int:
@@ -52,21 +52,12 @@ def load_image(path: str, *, pixel: int | None = None, max_size: int = 128, cuto
     return rgba[..., :3].copy(), rgba[..., 3] > 127
 
 
-def _quantize(colors: np.ndarray, n: int = 255) -> tuple[np.ndarray, np.ndarray]:
-    """[N, 3] uint8 -> (index per colour [N], palette [K, 3]) with K <= n."""
-    uniq, inv = np.unique(colors.reshape(-1, 3), axis=0, return_inverse=True)
-    if len(uniq) <= n:
-        return inv.reshape(-1), uniq
-    im = Image.fromarray(colors.reshape(1, -1, 3).astype(np.uint8), "RGB").quantize(n, method=Image.MEDIANCUT)
-    pal = np.array(im.getpalette()[:n * 3], np.uint8).reshape(-1, 3)
-    return np.asarray(im).reshape(-1), pal
-
-
 def _model_from(grid_rgb: np.ndarray, filled: np.ndarray, seed: int = 0) -> Model:
-    if max(filled.shape) > MAX_DIM:
-        raise ValueError(f"result {filled.shape} exceeds {MAX_DIM} per axis; lower max_size/height")
+    if max(filled.shape) > WORLD_DIM:
+        raise ValueError(f"result {filled.shape} exceeds {WORLD_DIM} per axis (MagicaVoxel's scene size); "
+                         f"lower max_size/height")
     m = Model(*filled.shape, seed=seed)
-    idx, pal = _quantize(grid_rgb[filled])
+    idx, pal = quantize(grid_rgb[filled])
     for i, c in enumerate(pal):
         m.pal.add(f"c{i + 1}", "#%02x%02x%02x" % tuple(int(k) for k in c))
     m.v[filled] = (idx + 1).astype(np.uint8)

@@ -144,6 +144,7 @@ const DICT = {
     'viewer.back': 'Back',
     'viewer.top': 'Top',
     'viewer.hint': 'Drag: rotate · Wheel: zoom · Right-drag: pan · {n} surface voxels',
+    'viewer.coarse': 'large model, shown {k}× coarser here (the .vox keeps every voxel)',
 
     'toast.built': 'Build finished',
     'toast.backup': 'Build finished. The previous file had MagicaVoxel edits, so it was backed up as {name}.',
@@ -317,6 +318,7 @@ const DICT = {
     'viewer.back': '뒤',
     'viewer.top': '위',
     'viewer.hint': '드래그: 회전 · 휠: 확대 · 우클릭 드래그: 이동 · 표면 복셀 {n}개',
+    'viewer.coarse': '큰 모델이라 여기서는 {k}배 거칠게 보여 줍니다(.vox에는 모든 복셀이 그대로 있음)',
 
     'toast.built': '빌드 완료',
     'toast.backup': '빌드 완료. 이전 파일에 MagicaVoxel 편집 내용이 있어 {name}(으)로 백업했습니다.',

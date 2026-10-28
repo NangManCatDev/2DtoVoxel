@@ -8,8 +8,8 @@ Run commands from the project folder. `voxtool` works after `pip install -e .`; 
 
 | Command | What it does |
 |---|---|
-| `voxtool build models/<name>.py [--open] [--no-score]` | Builds into `output/<name>/` (`.vox`, previews, comparison, score). `--open` opens MagicaVoxel |
-| `voxtool score models/<name>.py` | Scores against `REFERENCE` and prints JSON |
+| `voxtool build models/<name>.py [--open] [--no-score] [--res N]` | Builds into `output/<name>/` (`.vox`, previews, comparison, score). `--open` opens MagicaVoxel; `--res` overrides the script's `RES` (finer voxels, same design) |
+| `voxtool score models/<name>.py [--res N] [--zoom AREA]` | Scores against `REFERENCE` and prints JSON. `--zoom top-right` (a region of the score's 3×3 grid) or `--zoom x0,y0,x1,y1` (reference pixels) instead writes a close-up at the reference's full resolution → `_zoom_<area>.png` |
 | `voxtool fit-camera models/<name>.py [--fovs 0,25,45]` | Finds the best `VIEW` and writes `_fit.png` |
 | `voxtool angles models/<name>.py 30,20 42,15,30` | Renders `az,el[,fov]` cameras next to the reference → `_angles.png` |
 | `voxtool render <file.vox> [--az 30 --el 30 --fov 0]` | Preview sheet for any `.vox`, including MagicaVoxel's own |
@@ -34,6 +34,7 @@ Everything generated goes to `output/<name>/` and can be rebuilt at any time (th
 | `<name>_iso.png`, `_sheet.png` | 3/4 preview, all views |
 | `<name>_compare.png`, `_score.png`, `_scores.jsonl` | Reference comparison, diff image, score history |
 | `<name>_angles.png`, `_fit.png` | Camera tries, camera fit |
+| `<name>_zoom_<area>.png` | Close-up from `score --zoom` |
 | `<name>_edited_<time>.vox` | Backup of a file you had saved from MagicaVoxel |
 | `sprites/`, `export/`, `variants/` | Sprite sheet + manifest, meshes, palette variants |
 

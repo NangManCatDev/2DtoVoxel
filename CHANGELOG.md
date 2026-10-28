@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### High-resolution models
+- Objects over 256 voxels per axis are saved as 256-voxel tiles in a named MagicaVoxel group, so big grids and big parts just work (MagicaVoxel shows scenes up to about 2048 per axis). `extrude` / `carve` results and `recolor` variants may exceed 256 too.
+- `Model(..., res=N)` and `RES` in scripts: the same design in N× finer voxels, with smoother round shapes and roofs and finer textures. `voxtool build --res N` / `score --res N` override it for one run.
+- `m.paint_reference(REFERENCE, VIEW)`: paints the voxels the reference shows with its own pixels (shading, stains, patterns), skipping colours too far from a voxel's own so materials don't bleed into each other; colours are reduced per material.
+- `voxtool score --zoom <region | x0,y0,x1,y1>`: close-up of one area at the reference's full resolution (reference, build, difference).
+- Faster previews for big models: past 150,000 visible faces a numpy z-buffer replaces drawing polygons one by one (a 1024 × 1024 terrain: 11 s → 3 s), and renders are capped at 3000 px.
+- The 3D viewer handles grids over 255 (16-bit coordinates) and shows very large models coarser instead of freezing.
+- The `/voxelize` skill has a high-resolution finishing step.
+
 - README rewritten with [readme-craft](https://github.com/motiful/readme-craft): logo, why / features / when to use / quick start up front, and the details moved to `docs/` (how it works, model scripts, command line, troubleshooting), in English and Korean.
 - Added `CONTRIBUTING.md`, `.github/repo-meta.yml` (About description and topics) and a logo.
 - README shows a real generation run (scores per build, time, cost) with an animation of each build.
