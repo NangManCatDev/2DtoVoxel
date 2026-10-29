@@ -77,7 +77,33 @@ def build() -> Model:
 
 ![res 1, 2, 3으로 빌드한 플레이어의 집](images/res.jpg)
 
-같은 모델에 `score --zoom bottom-right`를 쓰면 전체 점수로는 보이지 않는 것이 드러납니다. 레퍼런스의 덤불은 화단 밖으로 흘러넘치고 화단 앞면에 금이 가 있는데, 빌드는 가지런한 생울타리에 지그재그 홈입니다.
+### 나무, 덤불 같은 식물
+
+복셀 아트의 잎은 "덩어리의 덩어리"입니다. 정육면체 몇 개짜리 작은 잎 뭉치가 모여 덩어리가 되고, 덩어리가 모여 수관이 되며, 그 사이에 어두운 틈이 있습니다. `ellipsoid`나 `blob` 같은 기본 도형으로는 매끈한 공이 되므로, 식물용 도구를 따로 씁니다.
+
+- `tube(points, radius, c)`: 점들을 지나는 곡선을 따라 가늘어지는 줄기·가지·뿌리. 색 목록을 주면 나무껍질 줄무늬가 됩니다.
+- `foliage(lobes, colors)`: 레퍼런스 외곽선에서 잰 잎 덩어리 `(cx, cy, cz, r)` 위에 수관을 만듭니다. 덩어리마다 작은 덩어리를, 작은 덩어리마다 잎 뭉치(`clump`, 복셀 단위)를 붙이고, 위쪽과 바깥쪽은 밝게, 틈에는 어두운 속이 보이게 칠합니다. 줄기와 가지를 먼저 그리면 잎이 그 주위로 자랍니다.
+- `tree(x, y, z, height, leaves, bark, style=...)`: 줄기, 뿌리, 잎 덩어리마다 뻗는 가지, `foliage` 수관을 한 번에 만듭니다. `lobes=`를 직접 주거나 스타일로 배치합니다.
+
+![여섯 가지 나무 스타일](images/trees.jpg)
+
+- `crown_depth(lobes, x, y, VIEW)`: 그림에서 잰 잎 덩어리는 모두 한 평면, 즉 `(x, y)`의 줄기를 지나 카메라를 향한 수직 평면 위에 있습니다. 그래서 정면에서는 맞지만 옆에서 보면 납작합니다. 이 함수는 각 덩어리의 앞뒤로 수평 복사본을 더합니다. 깊이는 위에서 볼 때 둥근 수관만큼이고, 측정한 외곽선을 넘지 않는 데까지만 채웁니다(비스듬히 내려다보면 뒤쪽 덩어리일수록 화면에서 위에 보이기 때문). `tree(..., lobes=..., view=VIEW)`가 대신 해 줍니다. 외곽선의 빈 곳을 카메라를 향한 평면에 복셀 한 겹으로 채우거나, 덩어리를 시선 방향으로 복사하지 마세요. 정면 점수는 조금 오르지만 다른 방향에서 보면 기울어진 판이 됩니다.
+- `carve_to_reference(REFERENCE, VIEW, only=잎들)`: 레퍼런스의 배경에 떨어지는 복셀을 깎아, 잎 덩어리로는 대략만 맞는 자연물 외곽을 정리합니다. 먼저 모델 외곽을 레퍼런스 높이에 맞춰 놓고 깎으므로 비율을 먼저 맞춘 뒤 쓰고, `only`로 범위를 정해 줄기나 받침은 건드리지 않게 하세요.
+
+키 큰 나무 5그루 시트에서, 잎 덩어리와 줄기의 측정값은 그대로 두고 손으로 쓴 잎 뭉치 코드만 이 도구로 바꿨을 때의 결과입니다.
+
+| 버전 | IoU | ΔE |
+|---|---|---|
+| 직접 쓴 잎 뭉치 코드 (Claude가 처음 쓴 스크립트) | 0.847 | 15.2 |
+| `tube` + `foliage` | 0.844 | 14.6 |
+| … + `carve_to_reference(only=잎)` | 0.869 | 14.5 |
+| … + `paint_reference` | 0.869 | 10.7 |
+
+퍼진 나무 5그루 시트에서 Claude가 처음 쓴 스크립트는 외곽선을 줄기 평면의 복셀 한 겹으로 채우고 잎 덩어리를 시선 방향으로 복사했습니다. 정면 점수는 IoU 0.914였지만 옆에서 보면 수관이 모두 기울어진 판이었습니다. 같은 측정값으로 `crown_depth`, `foliage`, `tube`를 써서 다시 만들자 수관이 어느 방향에서나 둥글어졌고, 정면 점수는 0.842였습니다. 점수는 한 방향에서만 재므로 `_sheet.png`의 옆·뒤 뷰나 `voxtool angles`로 꼭 확인하세요.
+
+레퍼런스 자체가 복셀 그림이면 그 칸 크기에 맞추세요. 레퍼런스의 정육면체 하나가 복셀 하나가 되게 합니다. 같은 나무를 `--res 2`로 만들면 잎이 그림보다 잘게 쪼개져 점수가 더 낮았습니다(IoU 0.855, ΔE 13.3).
+
+플레이어의 집에 `score --zoom bottom-right`를 쓰면 전체 점수로는 보이지 않는 것이 드러납니다. 레퍼런스의 덤불은 화단 밖으로 흘러넘치고 화단 앞면에 금이 가 있는데, 빌드는 가지런한 생울타리에 지그재그 홈입니다.
 
 ![화단 확대 비교: 레퍼런스, 빌드, 차이](images/zoom.jpg)
 
@@ -108,6 +134,11 @@ def build() -> Model:
 | | `vine(x, y, z, length, colors, wall="-y", drift=0.35, leaf=0.6, spread=1)` | 벽을 타고 아래로 늘어진 덩굴 |
 | | `sprinkle(colors, prob, target, region=None)` | 표면 복셀 일부를 무작위로 다시 칠하기 (덤불 속 꽃) |
 | | `scatter_on_top(region, colors, prob, target=None)` | 드러난 윗면 위에 복셀 올리기 |
+| 식물 | `tube(points, radius, c, smooth=True)` | 휘고 가늘어지는 줄기·가지·뿌리. 색 목록이면 나무껍질 줄무늬 |
+| | `foliage(lobes, colors, clump=1.8, density=1.0, core=None, tips=None)` | 잎 덩어리 `(cx, cy, cz, r)` 위의 울퉁불퉁한 수관. 색은 어두운 것 → 밝은 것 |
+| | `crown_depth(lobes, x, y, view, fill=1.0)` | 그림에서 잰 잎 덩어리를 수관 깊이 방향으로 채우기 |
+| | `tree(x, y, z, height, leaves, bark, style="round", width=None, lobes=None, view=None, ...)` | 나무 한 그루. 스타일 `round`, `column`, `cone`, `tiered`, `branched`, `spread`. 잰 `lobes`에는 `view`도 |
+| 레퍼런스 맞춤 | `carve_to_reference(reference, view, only=None, margin=0.5, cutout=None)` | 레퍼런스 배경에 떨어지는 복셀 깎기 |
 | 레퍼런스 색 | `paint_reference(reference, view, colors=96, tol=30, only=None, blend=1.0, cutout=None)` | 레퍼런스에 보이는 복셀을 그 픽셀 색으로 칠하기(마지막에 호출). 새 색 이름은 `<색>_r1`, … |
 | 모델 | `Model(w, d, h, seed=0, res=1)` | 설계 단위 격자. 단위당 `res` 복셀 (`m.res`, `m.dims`. `m.size`는 복셀 격자 크기) |
 | 오브젝트·파일 | `with m.part(name): ...` | 블록 안에서 그린 복셀이 `.vox`의 별도 오브젝트가 됨 (키트 시트) |

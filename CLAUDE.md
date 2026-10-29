@@ -20,7 +20,8 @@ When a new reference comes in, follow the `/voxelize <image path>` skill (`.clau
   `backup_if_edited()`: if the file was saved by MagicaVoxel (it has chunks our writer never writes, like rOBJ/rCAM),
   copy it before overwriting.
 - `voxtool/model.py` — building DSL (`Model`, `Palette`). Primitives, architecture, organic helpers, `part()`,
-  `from_vox()/paste_vox()`, `paint_reference()`. `Model(..., res=r)`: design units → r× finer voxels.
+  `from_vox()/paste_vox()`, plants (`tube`, `foliage`, `tree`), `carve_to_reference()`, `paint_reference()`.
+  `Model(..., res=r)`: design units → r× finer voxels.
   `to_scene()` cuts objects over 256 into grouped tiles (`split_grid`).
 - `voxtool/render.py` — `Camera` (orthographic / perspective `fov`), `render_iso` (transparent and crisp modes; over
   `POLY_LIMIT` visible faces a numpy z-buffer `_raster` replaces PIL polygons; capped at `MAX_PX`), `face_buffer`,
@@ -36,6 +37,7 @@ When a new reference comes in, follow the `/voxelize <image path>` skill (`.clau
   Conversion results are `models/<name>.base.vox` (source data, committed) + a script that loads it.
 - `output/<name>/` — `.vox`, `_iso/_sheet/_compare/_score/_fit.png`, `_scores.jsonl`, `sprites/ export/ variants/`
   (generated, can be rebuilt any time, git-ignored). `output/_jobs/<id>/` — UI job logs and per-build snapshots (`iter/`).
+  `output/_trash/<slug>_<time>/` — models deleted in the UI (script, base .vox, output folder; moved, not erased).
 
 ## Permissions of UI jobs (important)
 When the UI runs Claude it uses `--permission-mode dontAsk` and allows only `allowed_tools(name)` from
@@ -99,6 +101,17 @@ VT ui / VT install-skill
 - `paint_reference(REFERENCE, VIEW)` goes last in `build()`. It only helps once the silhouette fits (IoU ≳ 0.95); `tol`
   (Lab distance, lightness at half) keeps colours from bleeding across materials. On the player house (IoU 0.90) it
   smeared colours until `tol` was added.
+- Plants: before `foliage()` existed, UI jobs wrote 350–500-line scripts with their own clump helpers and still got
+  smooth balls (organic models scored IoU 0.80–0.87, buildings 0.95–0.97). Use `tube`/`foliage`/`tree`; a lobe's `r`
+  is the outline radius measured on the reference (the first version overshot it by ~40% and crowns came out fat).
+- The score only looks from the reference's direction, and UI jobs gamed it on trees: they filled the outline with a
+  voxel layer in the trunk's plane and copied lobes along the line of sight, so crowns were tilted slabs from the side
+  (spreading trees: IoU 0.914 front, flat from every other angle). Lobes measured on a picture go through
+  `crown_depth()` (or `tree(lobes=..., view=VIEW)`); with them the same trees are round from every side at IoU 0.842.
+  Check `_sheet.png`'s back/side views or `angles` at az+90/az+180 for organic models.
+- `carve_to_reference` aligns by outline height + bbox centre: aligning by area (like the score) made each cut rescale
+  the model and cut again (IoU 0.84 → 0.49). With voxel-art references, match the picture's grain instead of raising
+  `RES` (the tall-trees sheet scored lower at res 2).
 
 ## Reproducing a reference (lessons from the player house)
 - References are usually **perspective renders**. Don't measure in screen pixels; measure **relative to an element of

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### UI
+- Delete a model from the sidebar: a bin icon on each model opens a confirmation that lists what will be moved and warns about other models that use it, MagicaVoxel edits and running jobs. Deleted models go to `output/_trash/<name>_<time>/` instead of being erased.
+
+### Plants
+- `m.tube()`: curved, tapering limbs with bark streaks. `m.foliage()`: voxel-art crowns made of clusters of small leaf clumps with a dark core, shaded light on top and outside. `m.tree()`: a whole tree (trunk, roots, limbs, crown) from your own lobes or a style (`round`, `column`, `cone`, `tiered`, `branched`, `spread`).
+- `m.carve_to_reference()`: cuts voxels that land on the reference's background, to tidy organic outlines.
+- `m.crown_depth()` (and `tree(lobes=..., view=VIEW)`): spreads lobes measured on a picture through the crown's depth, so crowns are round from every side instead of flat boards; the skill forbids filling an outline with a flat voxel layer and asks for a side/back check of organic models.
+- On a sheet of five tall trees (same measurements, only the leaf code replaced): IoU 0.847 → 0.869, ΔE 15.2 → 10.7 with `paint_reference`.
+- The `/voxelize` skill tells Claude to use these for plants and to match a voxel-art reference's grain.
+
 ### High-resolution models
 - Objects over 256 voxels per axis are saved as 256-voxel tiles in a named MagicaVoxel group, so big grids and big parts just work (MagicaVoxel shows scenes up to about 2048 per axis). `extrude` / `carve` results and `recolor` variants may exceed 256 too.
 - `Model(..., res=N)` and `RES` in scripts: the same design in N× finer voxels, with smoother round shapes and roofs and finer textures. `voxtool build --res N` / `score --res N` override it for one run.

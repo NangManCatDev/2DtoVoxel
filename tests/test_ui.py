@@ -138,3 +138,24 @@ def test_server_api_token_i18n_and_build(server):
     assert d["status"] == "done"
     detail = json.loads(urllib.request.urlopen(url + "api/models/hut").read())
     assert detail["stats"]["voxels"] > 0 and detail["score_history"] and "score" in detail["images"]
+
+
+def test_delete_moves_a_model_to_the_trash(server, workspace):
+    url, token = server
+    (workspace / "models" / "village.py").write_text("from hut import build  # uses hut\nNAME = 'village'\n",
+                                                     encoding="utf-8")
+    (workspace / "output" / "hut").mkdir(parents=True, exist_ok=True)
+    (workspace / "output" / "hut" / "hut.vox").write_bytes(b"VOX ")
+    check = json.loads(urllib.request.urlopen(url + "api/models/hut/delete-check").read())
+    assert check["items"] == ["models/hut.py", "output/hut/"] and check["used_by"] == ["village"]
+    assert _post(url + "api/models/hut/delete", {})[0] == 403                     # no token
+    code, r = _post(url + "api/models/hut/delete", {}, token)
+    assert code == 200 and r["trash"].startswith("output/_trash/hut_")
+    trash = workspace / r["trash"]
+    assert (trash / "hut.py").exists() and (trash / "hut" / "hut.vox").exists()
+    assert not (workspace / "models" / "hut.py").exists() and not (workspace / "output" / "hut").exists()
+    assert (workspace / "reference" / "hut.png").exists()                       # the reference stays
+    slugs = [m["slug"] for m in json.loads(urllib.request.urlopen(url + "api/models").read())]
+    assert "hut" not in slugs and "village" in slugs
+    code, err = _post(url + "api/models/hut/delete", {}, token, "ko")
+    assert code == 400 and err["code"] == "no_script"

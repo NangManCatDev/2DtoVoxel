@@ -115,6 +115,86 @@ def test_recolor_and_export_handle_grids_over_256(workspace):
     assert (workspace / "output" / "wide" / "export" / "wide.glb").stat().st_size > 0
 
 
+def _plant_model():
+    m = Model(40, 40, 50, seed=4)
+    m.pal.ramp("leaf", ["#0a2c0d", "#1b561e", "#276d29", "#388a36"])
+    m.pal.add("tip", "#6aa83a")
+    m.pal.ramp("bark", ["#8a542a", "#6e4220"])
+    return m
+
+
+def test_tube_bends_and_tapers():
+    m = _plant_model()
+    m.tube([(5, 20, 0), (10, 20, 20), (20, 20, 30)], [3, 2, 1], ["bark0", "bark1"])
+    assert m.v[5, 20, 0] and m.v[20, 20, 30] and not m.v[5, 20, 30]
+    width = lambda z: int((m.v[:, :, z] > 0).sum())                 # noqa: E731
+    assert width(1) > width(28) > 0                                  # thick at the foot, thin at the end
+    assert {m.pal.idx("bark0"), m.pal.idx("bark1")} <= set(np.unique(m.v).tolist())   # bark streaks
+
+
+def test_foliage_is_lumpy_shaded_and_respects_lobe_size():
+    m = _plant_model()
+    m.tube([(20, 20, 0), (20, 20, 30)], 1.5, "bark0")
+    n = m.foliage([(20, 20, 30, 9)], ["leaf0", "leaf1", "leaf2", "leaf3"], tips="tip")
+    filled = m.v > 0
+    xs = np.nonzero(m.v[:, :, 18:] > 0)[0]
+    assert n > 800 and xs.max() - xs.min() <= 2 * 9 + 4              # outline wobbles around r
+    front = filled.any(axis=1)                                       # seen from the front: no see-through gaps
+    X, Z = np.meshgrid(np.arange(40), np.arange(50), indexing="ij")
+    assert front[(X - 20) ** 2 + (Z - 30) ** 2 <= 6 ** 2].all()
+    assert m.v[20, 20, 25] == m.pal.idx("bark0")                     # leaves grow around the trunk
+    leaf_ids = [m.pal.idx(f"leaf{i}") for i in range(4)]
+    counts = [int((m.v == i).sum()) for i in leaf_ids]
+    assert min(counts) > 0 and (m.v == m.pal.idx("tip")).any()       # shades from dark to light
+    ball = Model(40, 40, 50)
+    ball.pal.add("a", "#000000")
+    ball.ellipsoid(20, 20, 30, 9, 9, 9, "a")
+
+    def lumpiness(f):             # exposed faces per volume^(2/3): about 7 for a ball
+        dirs = ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1))
+        return sum(int((f & ~render._shift(f, d)).sum()) for d in dirs) / f.sum() ** (2 / 3)
+    assert lumpiness(filled & (m.v != m.pal.idx("bark0"))) > 1.5 * lumpiness(ball.v > 0)
+
+
+def test_tree_styles_and_explicit_lobes():
+    for style in ("round", "column", "cone", "tiered", "branched", "spread"):
+        m = _plant_model()
+        info = m.tree(20, 20, 0, 45, ["leaf0", "leaf1", "leaf2", "leaf3"], ["bark0", "bark1"], style=style)
+        assert info["lobes"] and (m.v > 0).sum() > 500, style
+        top_trunk = max(z for x, y, z in info["trunk"])
+        assert top_trunk <= max(lb[2] + lb[3] for lb in info["lobes"])   # the trunk ends inside the crown
+    m = _plant_model()
+    info = m.tree(20, 20, 0, 40, ["leaf0", "leaf1"], "bark0", lobes=[(20, 20, 30, 7), (14, 20, 22, 5)])
+    assert len(info["lobes"]) == 2
+
+
+def test_crown_depth_rounds_a_flat_crown_without_tilting_it():
+    m = _plant_model()
+    view = {"azimuth": 45, "elevation": 30}
+    a, e = np.radians(45), np.radians(30)
+    right, back = np.array([np.cos(a), -np.sin(a)]), np.array([np.sin(a), np.cos(a)])
+    flat = [(20 + u * right[0], 20 + u * right[1], z, 4.0) for u, z in ((-8, 30), (0, 30), (8, 30), (0, 37))]
+    deep = m.crown_depth(flat, 20, 20, view)
+    depth = [(np.array(p[:2]) - [20, 20]) @ back for p in deep]
+    assert len(deep) > len(flat) and max(depth) - min(depth) > 8          # the crown now has depth
+    assert all(min(abs(p[2] - z) for z in (30, 37)) < 2.5 for p in deep)   # copies keep their height
+    top = max(z * np.cos(e) + r for _, _, z, r in flat)
+    assert all(p[2] * np.cos(e) + s * np.sin(e) + p[3] <= top + 1.5 for p, s in zip(deep, depth))   # not above the outline
+    info = m.tree(20, 20, 0, 40, ["leaf0", "leaf1"], "bark0", lobes=flat, view=view)
+    assert len(info["lobes"]) == len(deep)
+
+
+def test_carve_to_reference_cuts_what_the_reference_lacks(workspace, monkeypatch):
+    monkeypatch.chdir(workspace)
+    m = load_hut(workspace)
+    hut = m.v > 0
+    m.pal.add("extra", "#ff00ff")
+    m.box(21, 0, 0, 3, 2, 14, "extra")                # a post beside the front-right corner, not in the reference
+    removed = m.carve_to_reference("reference/hut.png", {"azimuth": 30, "elevation": 25}, only="extra")
+    assert removed > 0 and (m.v == m.pal.idx("extra")).sum() < 3 * 2 * 14 * 0.5
+    assert np.array_equal(m.v[hut] > 0, np.ones(int(hut.sum()), bool))   # `only` protects the rest
+
+
 def test_coarsen_keeps_the_top_colour_of_each_block():
     v = np.zeros((6, 6, 6), np.uint8)
     v[:, :, 0] = 1

@@ -24,11 +24,13 @@
 - **Change one thing at a time** with "Request changes". Short, concrete requests ("lower the porch roof by 3 voxels") work better than long lists.
 - **Start simple images with Quick convert**, then refine with Claude; it is faster and cheaper than generating from scratch.
 - **Keep manual edits in a separate file** (MagicaVoxel *Save As*), see below.
+- **Trees and bushes**: if a plant comes out as smooth balls, ask Claude to rebuild it with `foliage` / `tree` (see [Trees, bushes and other plants](model-scripts.md#trees-bushes-and-other-plants)).
 - **For more detail, ask for it at the end**: once the shape scores well, "build the final version at res 3 and paint it from the reference" (see [High-resolution models](model-scripts.md#high-resolution-models)). Iterating at high resolution is slower and doesn't fix proportions.
 
 ## Platform notes and limitations
 
 - **Windows** is where the whole flow (UI, Claude jobs, MagicaVoxel open and capture) has been used. **macOS / Linux**: the CLI and tests run (CI covers Ubuntu), the UI starts Claude jobs with `python3 -m voxtool`, and MagicaVoxel is opened with `open -a` on macOS; window capture (`shot`) is Windows-only, and the full Claude flow there has not been tried by the author yet.
+- **Deleted a model by mistake?** The UI moves it to `output/_trash/<name>_<time>/`. Move `<name>.py` (and `<name>.base.vox`, if there is one) back into `models/` and the output folder back into `output/`.
 - **"Rebuild" and Claude's changes regenerate the `.vox` from the script.** If the existing file was saved from MagicaVoxel (so it may hold hand edits), it is first copied to `output/<name>/<name>_edited_<time>.vox`, and the model page lists these backups. Hand edits are not carried into the rebuilt model, so to keep working on them, use *Save As* in MagicaVoxel, or start a script from it with `Model.from_vox`.
 - A `.vox` object holds at most 256 voxels per axis and the palette 255 colours (MagicaVoxel's limits). Bigger models are saved as tiles automatically; MagicaVoxel shows scenes up to about 2048 voxels per axis. Very large models (millions of voxels) build in tens of seconds, and the 3D tab shows them coarser.
 - The 3D tab loads three.js from a CDN and needs an internet connection.

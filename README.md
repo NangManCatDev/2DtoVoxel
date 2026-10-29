@@ -35,7 +35,7 @@ Turning concept art into voxels by hand means hours of placing blocks and eyebal
 - **Editable, not baked.** The result is a `.vox` plus a short build script. Ask for changes in plain words ("make the awning bigger") or edit it yourself.
 - **Watch it work, rewind any time.** A live log shows every build with its score, and any earlier version is one click away.
 - **Same camera as the reference.** The camera angle and perspective are fitted automatically, so comparisons are like for like.
-- **High resolution when you want it.** Iterate small, then build the final model at 2–3× resolution, paint colour detail straight from your image, and zoom into any area at full size. Models over 256 voxels per axis are split into MagicaVoxel objects for you.
+- **High resolution when you want it.** Iterate small, then build the final model at 2–3× resolution, paint colour detail straight from your image, and zoom into any area at full size. Models over 256 voxels per axis are split into MagicaVoxel objects for you, and trees and bushes get their own tools for clumpy voxel-art foliage.
 - **Pixel art in seconds, no Claude needed.** Sprites and icons become flat or rounded voxel models; front/side/top drawings can be carved into one.
 - **Game-ready exports.** 8-direction sprite sheets with a manifest, GLB / OBJ / PLY meshes, and palette variants.
 - **Safe to leave running.** The UI stays on your computer, each job can only touch its own model, cost and build limits are per job, and files you edited in MagicaVoxel are backed up before a rebuild.
@@ -86,6 +86,7 @@ Start it with `voxtool ui`, `2DtoVoxel.bat` (Windows) or `./2dtovoxel.sh` (macOS
 2. Watch the live log; each build shows up with its score.
 3. On the model page, compare with the reference, read the score map, rotate the model in 3D, open it in MagicaVoxel, download the `.vox`, or export game assets.
 4. **Request changes** in plain words. Tick "Continue the previous conversation" to skip re-analysis.
+5. To delete a model, hover it in the sidebar and click the bin icon. After you confirm, its script and outputs move to `output/_trash/`, so you can still move them back.
 
 | New model | Model page (score tab) | 3D preview |
 |---|---|---|

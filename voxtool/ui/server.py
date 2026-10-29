@@ -14,6 +14,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import sys
 import threading
 import time
@@ -26,7 +27,7 @@ import numpy as np
 
 from ..__main__ import find_magicavoxel, open_in_magicavoxel, screenshot_magicavoxel
 from ..render import coarsen
-from ..vox_io import merge_models, read_vox
+from ..vox_io import WRITER_CHUNKS, chunk_ids, merge_models, read_vox
 from .i18n import UserError, pick_lang
 from .jobs import ROOT, JobManager, find_claude, generate_prompt, refine_prompt, voxtool_command
 
@@ -164,6 +165,43 @@ def model_detail(slug: str) -> dict | None:
             "score_history": history, "exports": exports, "last_session": JOBS.last_session(slug),
             "stats": vox_stats(mp["vox"]), "running": running.id if running else None,
             "jobs": [j for j in JOBS.list() if j["name"] == slug][:10]}
+
+
+TRASH = ROOT / "output" / "_trash"
+
+
+def delete_check(slug: str) -> dict | None:
+    """What deleting a model moves to the trash, and what the confirmation should warn about:
+    other scripts that mention it (they import or paste it), MagicaVoxel edits, a running job."""
+    mp = model_paths(slug)
+    if not mp["script"].exists():
+        return None
+    items = [p for p in (mp["script"], ROOT / "models" / f"{slug}.base.vox") if p.exists()]
+    if mp["dir"].is_dir():
+        items.append(mp["dir"])
+    word = re.compile(rf"\b{re.escape(slug)}\b")
+    used_by = sorted(p.stem for p in (ROOT / "models").glob("*.py")
+                     if p.stem != slug and word.search(p.read_text(encoding="utf-8", errors="replace")))
+    edited = mp["dir"].is_dir() and (any(mp["dir"].glob("*_edited_*.vox"))
+                                      or (mp["vox"].exists() and bool(chunk_ids(str(mp["vox"])) - WRITER_CHUNKS)))
+    return {"slug": slug, "items": [p.relative_to(ROOT).as_posix() + ("/" if p.is_dir() else "") for p in items],
+            "used_by": used_by, "edited": bool(edited), "running": JOBS.running_for(slug) is not None}
+
+
+def delete_model(slug: str) -> dict:
+    """Moves the model's script, its base .vox and its output folder to output/_trash/<slug>_<time>/
+    rather than erasing them, so a mistake can be undone by moving them back. The reference stays."""
+    check = delete_check(slug)
+    if check is None:
+        raise UserError("no_script", name=slug)
+    if check["running"]:
+        raise UserError("busy", name=slug)
+    dest = TRASH / f"{slug}_{time.strftime('%Y%m%d-%H%M%S')}"
+    dest.mkdir(parents=True, exist_ok=True)
+    for rel in check["items"]:
+        src = ROOT / rel.rstrip("/")
+        shutil.move(str(src), str(dest / src.name))
+    return {"ok": True, "trash": dest.relative_to(ROOT).as_posix() + "/"}
 
 
 VIEWER_MAX = 400_000    # surface voxels the 3D viewer gets; bigger models are sent coarser
@@ -313,6 +351,10 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 d = voxel_payload(m.group(1))
                 return self._json(d) if d else self._err("no .vox yet", 404)
+            m = re.fullmatch(r"/api/models/([a-z0-9_]+)/delete-check", path)
+            if m:
+                d = delete_check(m.group(1))
+                return self._json(d) if d else self._err("model not found", 404)
             return self._err("not found", 404)
         except Exception as e:  # noqa: BLE001
             return self._err(f"{type(e).__name__}: {e}", 500)
@@ -335,6 +377,9 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r"/api/jobs/([\w-]+)/restore", path)
             if m:
                 return self._json(JOBS.restore(m.group(1), int(body.get("n", -1))).summary())
+            m = re.fullmatch(r"/api/models/([a-z0-9_]+)/delete", path)
+            if m:
+                return self._json(delete_model(m.group(1)))
             m = re.fullmatch(r"/api/models/([a-z0-9_]+)/(open|shot)", path)
             if m:
                 mp = model_paths(m.group(1))

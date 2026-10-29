@@ -171,12 +171,11 @@ def score_model(v, palette, emissive, ref_path: str, view: dict, *, cutout_kw: d
 
 # ---------------------------------------------------------------- the model laid over the full-size reference
 
-def place_on_reference(v, palette, emissive, ref_path: str, view: dict, *, cutout_kw: dict | None = None,
-                       cache_dir: str | None = None, min_face_px: float = 0.0):
-    """Lays the model over the full-resolution reference cutout with the score's alignment
-    (equal silhouette area, matching centroids). Returns (reference rgba [H, W, 4], q, face
-    index per pixel [H*q, W*q] with -1 = none, faces from render._faces): the face buffer is
-    q times finer than the reference when voxel faces would otherwise be under min_face_px."""
+def _align(v, palette, emissive, ref_path, view, cutout_kw, cache_dir, by: str = "area"):
+    """The score's alignment at the reference's full resolution: (reference rgba, camera, faces,
+    to_px mapping Camera.project output to reference pixels, pixels per voxel). by='area' matches
+    silhouette area and centroid like the score; by='bbox' matches the silhouette's height and
+    bounding-box centre instead, which doesn't drift when voxels are added or removed."""
     ref = np.asarray(reference_cutout(ref_path, cache_dir, **(cutout_kw or {})))
     ref_mask = ref[..., 3] > 127
     if not ref_mask.any():
@@ -188,15 +187,38 @@ def place_on_reference(v, palette, emissive, ref_path: str, view: dict, *, cutou
     pts = cam.project(f["corners"])
     flat = pts.reshape(-1, 2)
     lo, hi = flat.min(axis=0), flat.max(axis=0)
-    ys = np.nonzero(ref_mask)[0]
+    ys, xs = np.nonzero(ref_mask)
     s0 = (ys.max() - ys.min() + 1) / max(hi[1] - lo[1], 1e-6)       # first pass at the reference's height
+    if by == "bbox":
+        c_ref = np.array([(xs.min() + xs.max() + 1) / 2, (ys.min() + ys.max() + 1) / 2])
+        mid = (lo + hi) / 2
+        return ref, cam, f, (lambda p: (p - mid) * s0 + c_ref), s0
     W0, H0 = (np.ceil((hi - lo) * s0) + 3).astype(int)
     m0 = _raster((pts - lo) * s0 + 1, f["depth"], int(W0), int(H0)) >= 0
     k = math.sqrt(ref_mask.sum() / max(m0.sum(), 1))
     c0, cr = _centroid(m0) + 0.5, _centroid(ref_mask) + 0.5
-    q = max(1, min(4, math.ceil(min_face_px / (s0 * k)))) if min_face_px else 1
-    H, W = ref_mask.shape
-    ids = _raster((((pts - lo) * s0 + 1 - c0) * k + cr) * q, f["depth"], W * q, H * q)
+    return ref, cam, f, (lambda p: ((p - lo) * s0 + 1 - c0) * k + cr), s0 * k
+
+
+def reference_transform(v, palette, emissive, ref_path: str, view: dict, *, cutout_kw: dict | None = None,
+                        cache_dir: str | None = None, by: str = "area"):
+    """(reference rgba [H, W, 4], camera, to_px, pixels per voxel): to_px(camera.project(points))
+    gives reference pixel coordinates under the score's alignment (by='area') or a bounding-box
+    alignment (by='bbox', see _align)."""
+    ref, cam, _, to_px, ppv = _align(v, palette, emissive, ref_path, view, cutout_kw, cache_dir, by)
+    return ref, cam, to_px, ppv
+
+
+def place_on_reference(v, palette, emissive, ref_path: str, view: dict, *, cutout_kw: dict | None = None,
+                       cache_dir: str | None = None, min_face_px: float = 0.0):
+    """Lays the model over the full-resolution reference cutout with the score's alignment
+    (equal silhouette area, matching centroids). Returns (reference rgba [H, W, 4], q, face
+    index per pixel [H*q, W*q] with -1 = none, faces from render._faces): the face buffer is
+    q times finer than the reference when voxel faces would otherwise be under min_face_px."""
+    ref, cam, f, to_px, ppv = _align(v, palette, emissive, ref_path, view, cutout_kw, cache_dir)
+    q = max(1, min(4, math.ceil(min_face_px / ppv))) if min_face_px else 1
+    H, W = ref.shape[:2]
+    ids = _raster(to_px(cam.project(f["corners"])) * q, f["depth"], W * q, H * q)
     return ref, q, ids, f
 
 

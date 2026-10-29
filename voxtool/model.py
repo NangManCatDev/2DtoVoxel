@@ -464,6 +464,242 @@ class Model:
         idx = np.array([self.pal.idx(c) for c in colors], np.uint8)
         sub[mask] = self.rng.choice(idx, size=int(mask.sum()))
 
+    # ------------------------------------------------------------ plants: limbs, leafy crowns, trees
+
+    def tube(self, points: Sequence[Sequence[float]], radius, c: Color | Sequence[Color], *, smooth: bool = True,
+             only_empty: bool = False):
+        """Round limb along a polyline (trunks, branches, roots, pipes). radius is one value or one
+        per point (taper). smooth=True runs a Catmull-Rom curve through the points so a limb bends
+        instead of kinking. A list of colours gives bark: vertical streaks, 3 voxels tall."""
+        pts = np.asarray(points, float).reshape(-1, 3)
+        rad = np.broadcast_to(np.asarray(radius, float), (len(pts),)).astype(float)
+        if smooth and len(pts) > 2:
+            pts, rad = _catmull_rom(pts, rad)
+        cols = [c] if c is None or isinstance(c, (str, int)) else list(c)
+        ids = np.array([self.pal.idx(k) for k in cols], np.uint8)
+        r = self.res
+        for a, b, ra, rb in zip(pts[:-1], pts[1:], rad[:-1], rad[1:]):
+            lo = np.floor(np.minimum(a, b) - max(ra, rb) - 1)
+            sl = self._slices(*lo, *(np.ceil(np.maximum(a, b) + max(ra, rb) + 1) - lo + 1))
+            if sl is None:
+                continue
+            X, Y, Z = self._centred(*self._coords(sl))
+            P = np.stack([X, Y, Z], -1)
+            d = b - a
+            t = np.clip(((P - a) @ d) / max(float(d @ d), 1e-9), 0, 1)
+            mask = np.linalg.norm(P - (a + t[..., None] * d), axis=-1) <= ra + (rb - ra) * t
+            region = self.v[sl]
+            if only_empty:
+                mask &= region == 0
+            if len(ids) > 1:
+                pick = _hash01(np.round(X * r), np.round(Y * r), np.floor(Z * r / 3), 17)
+                col = ids[np.minimum((pick * len(ids)).astype(int), len(ids) - 1)]
+                region[mask] = col[mask]
+            else:
+                region[mask] = ids[0]
+
+    def foliage(self, lobes: Sequence[Sequence[float]], colors: Sequence[Color], *, clump: float = 1.8,
+                density: float = 1.0, core: Color = None, tips: Color = None, tip_rate: float = 0.15,
+                only_empty: bool = True) -> int:
+        """Leafy crown in the look of voxel-art trees and bushes: clusters of small leaf clumps.
+        Every lobe (cx, cy, cz, r) is covered with sub-lobes about a third its size, and every
+        sub-lobe with clumps of radius `clump` (a few voxels each, jagged at the voxel level), so
+        the outline is lumpy at several scales instead of a smooth ball; it wobbles around r from
+        each lobe's centre (measure r on the reference's outline). Inside, a dark core (the
+        darkest colour, or `core`) makes the gaps between clumps read as shadow. colors run from
+        dark to light: a voxel is lighter at the top of its clump, on the outside of the crown and
+        higher up. tips = optional colour for scattered single cubes on top (bright leaf tips).
+        density > 1 packs more clumps. Draw trunk and limbs first; with only_empty the leaves
+        grow around them. Returns the number of voxels placed."""
+        from scipy.spatial import cKDTree
+        rng = self.rng
+        lobes = np.asarray(lobes, float).reshape(-1, 4)
+        ids = np.array([self.pal.idx(k) for k in colors], np.uint8)
+        core_id = self.pal.idx(core) if core is not None else ids[0]
+        # sub-lobes spread over each lobe; their centres reach to the lobe's surface, some poke out
+        subs = []
+        for cx, cy, cz, r in lobes:
+            rs = max(r / 2.6, clump * 1.8)
+            if rs >= r * 0.75:
+                subs.append((cx, cy, cz, r))
+                continue
+            n = max(4, int(round(density * 2.0 * (r / rs) ** 2)))
+            dirs = _sphere_dirs(rng, n)
+            rad = rs * rng.uniform(0.75, 1.25, n)
+            dist = np.maximum(r - rad - clump * 0.3 + rs * rng.uniform(-0.4, 0.3, n), 0)  # outline wobbles around r
+            subs += [(*p, q) for p, q in zip(np.array([cx, cy, cz]) + dirs * dist[:, None], rad)]
+            subs.append((cx, cy, cz, max(r - rs * 1.8, rs)))     # fills the middle of the lobe
+        subs = np.array(subs, float)
+        # clumps over every sub-lobe's surface
+        cen, rad = [], []
+        for cx, cy, cz, r in subs:
+            n = max(5, int(round(density * 2.0 * (r / clump) ** 2)))
+            dirs = _sphere_dirs(rng, n)
+            rc = clump * rng.uniform(0.75, 1.25, n)
+            cen.append(np.array([cx, cy, cz]) + dirs * np.maximum(r - rc * 0.6 - clump * rng.uniform(0, 0.5, n), 0)[:, None])
+            rad.append(rc)
+        cen, rad = np.concatenate(cen), np.concatenate(rad)
+        lo = np.floor(np.minimum(cen.min(0) - rad.max(), (subs[:, :3] - subs[:, 3:]).min(0)) - 1)
+        hi = np.ceil(np.maximum(cen.max(0) + rad.max(), (subs[:, :3] + subs[:, 3:]).max(0)) + 1)
+        sl = self._slices(*lo, *(hi - lo + 1))
+        if sl is None:
+            return 0
+        X, Y, Z = self._centred(*self._coords(sl))
+        P = np.stack([X.ravel(), Y.ravel(), Z.ravel()], 1)
+        region = self.v[sl]
+        free = (region == 0).ravel() if only_empty else np.ones(P.shape[0], bool)
+        # dark core: the sub-lobes shrunk by about a clump
+        d_sub, i_sub = cKDTree(subs[:, :3]).query(P, k=min(4, len(subs)))
+        d_sub, i_sub = d_sub.reshape(len(P), -1), i_sub.reshape(len(P), -1)
+        in_core = (d_sub <= np.maximum(subs[i_sub, 3] - clump * 1.4, 0.8)).any(axis=1)
+        # clumps: inside when within the clump's radius, with a jagged voxel-level edge
+        d, i = cKDTree(cen).query(P, k=min(3, len(cen)))
+        d, i = d.reshape(len(P), -1), i.reshape(len(P), -1)
+        jag = 1 + 0.28 * (_hash01(*(np.round(P * self.res).T), 5) - 0.5) * 2
+        inside = d <= rad[i] * jag[:, None]
+        hit = inside.any(axis=1)
+        k = np.where(inside, d / rad[i], np.inf).argmin(axis=1)            # the clump each voxel belongs to
+        c = cen[i[np.arange(len(P)), k]]
+        rc = rad[i[np.arange(len(P)), k]]
+        top = (P[:, 2] - c[:, 2]) / rc                                       # -1 under its clump .. 1 on top
+        out = np.linalg.norm(c - subs[i_sub[:, 0], :3], axis=1) / subs[i_sub[:, 0], 3]   # outer clumps lighter
+        zl, zh = (cen[:, 2] - rad).min(), (cen[:, 2] + rad).max()
+        h = (P[:, 2] - zl) / max(zh - zl, 1e-6)
+        t = 0.55 * top + 0.45 * (out - 0.6) + 0.35 * (h - 0.5) + 0.3 * (_hash01(*(np.round(P * self.res).T), 9) - 0.5)
+        shade = ids[np.clip(np.floor((t + 0.75) / 1.5 * len(ids)), 0, len(ids) - 1).astype(int)]
+        val = np.where(hit, shade, np.where(in_core, core_id, 0)).astype(np.uint8)
+        put = (val > 0) & free
+        new = region.reshape(-1).copy()
+        new[put] = val[put]
+        new = new.reshape(region.shape)
+        if tips is not None:          # single bright cubes on the top surface of the leaves
+            leaf = np.isin(new, ids) & (new != region)
+            top_free = np.zeros_like(leaf)
+            top_free[:, :, :-1] = new[:, :, 1:] == 0
+            pick = leaf & top_free & (rng.random(leaf.shape) < tip_rate)
+            new[pick] = self.pal.idx(tips)
+        region[...] = new
+        return int(put.sum())
+
+    def crown_depth(self, lobes: Sequence[Sequence[float]], x: float, y: float, view: dict, *,
+                    fill: float = 1.0) -> list:
+        """Lobes measured on the reference all lie in one plane: the vertical plane through the
+        trunk at (x, y) that faces the camera of `view`. That outline is right from the front but
+        flat from the side. This spreads them through the crown's depth: each lobe gets copies
+        straight behind and in front of it - horizontally, at its own height, so the crown doesn't
+        tilt - as far as a crown that is round seen from above (as deep as the lobes at that height
+        are wide) reaches, but no further than the measured outline allows: seen from above at an
+        angle, a lobe further back shows higher up, so lobes near the top of the outline get few
+        copies behind them and lobes near its bottom few in front. fill < 1 spaces the copies
+        further apart. Pass the result to foliage() or tree(lobes=...). Never fill a crown's
+        outline with a flat layer of voxels instead."""
+        rng = self.rng
+        a, e = np.radians(view.get("azimuth", 30)), np.radians(view.get("elevation", 30))
+        right, back = np.array([np.cos(a), -np.sin(a)]), np.array([np.sin(a), np.cos(a)])
+        L = np.asarray(lobes, float).reshape(-1, 4)
+        u = (L[:, :2] - [x, y]) @ right
+        up = L[:, 2] * np.cos(e)                      # screen height of each lobe's centre (voxel units)
+        out = []
+        for i, (cx, cy, cz, r) in enumerate(L):
+            out.append((cx, cy, cz, r))
+            band = np.abs(L[:, 2] - cz) <= np.maximum(L[:, 3], r)          # lobes at about this height
+            lo, hi = (u[band] - L[band, 3]).min(), (u[band] + L[band, 3]).max()
+            half = np.sqrt(max(((hi - lo) / 2) ** 2 - (u[i] - (lo + hi) / 2) ** 2, 0.0)) - r * 0.6
+            over = np.abs(u - u[i]) < L[:, 3]                               # lobes covering this column
+            reach = np.sqrt(np.maximum(L[over, 3] ** 2 - (u[over] - u[i]) ** 2, 0))
+            room_back = (up[over] + reach).max() - up[i] - r              # outline above this lobe
+            room_front = up[i] - r - (up[over] - reach).min()             # outline below it
+            if np.sin(e) > 1e-3:
+                limit = {1: room_back / np.sin(e), -1: room_front / np.sin(e)}
+            else:
+                limit = {1: np.inf, -1: np.inf}
+            step = max(r * 1.1 / max(fill, 0.1), 1.0)
+            for sign in (1, -1):
+                k = 1
+                while k * step <= min(half, limit[sign]):
+                    p = np.array([cx, cy]) + back * sign * k * step
+                    out.append((p[0], p[1], cz + rng.normal(0, r * 0.15), r * rng.uniform(0.85, 1.0)))
+                    k += 1
+        return out
+
+    def tree(self, x: float, y: float, z: float, height: float, leaves: Sequence[Color],
+             bark: Color | Sequence[Color], *, style: str = "round", width: float | None = None,
+             trunk: tuple[float, float] | None = None, lobes: Sequence[Sequence[float]] | None = None,
+             lean: tuple[float, float] = (0.0, 0.0), roots: bool = True, limbs: bool = True,
+             clump: float = 1.8, density: float = 1.0, tips: Color = None, view: dict | None = None) -> dict:
+        """A whole tree standing at (x, y, z): trunk with a root flare, a limb into each lobe of the
+        crown, and a foliage() crown. Give the crown's lobes yourself as (cx, cy, cz, r) - for
+        example read off the reference, then also pass the reference's `view` so they are spread
+        through the crown's depth (crown_depth) - or let `style` lay them out: 'round', 'column'
+        (cypress), 'cone' (fir), 'tiered' (crown in separate layers), 'branched' (round clusters on
+        side limbs) or 'spread' (wide flat dome). width = crown diameter (default from style and
+        height); trunk = (radius at the foot, radius at the top); lean = (dx, dy) of the top.
+        Returns {'trunk': points, 'lobes': lobes} for further detail."""
+        rng = self.rng
+        H = float(height)
+        W = float(width) if width else H * {"column": 0.28, "cone": 0.42, "spread": 0.8}.get(style, 0.5)
+        r0, r1 = trunk if trunk else (max(1.0, H * 0.045), max(0.6, H * 0.016))
+        foot = np.array([x, y, z], float)
+        tip = foot + np.array([lean[0], lean[1], H * 0.92])
+        axis = lambda f: foot + (tip - foot) * f                                        # noqa: E731
+        if lobes is None:
+            lobes = _crown_lobes(style, axis, H, W, rng)
+        lobes = [tuple(map(float, lb)) for lb in lobes]
+        crown = self.crown_depth(lobes, x, y, view) if view is not None else lobes   # limbs go to `lobes` only
+        top = max(lobes, key=lambda lb: lb[2] + lb[3])          # the trunk ends inside the highest lobe
+        f_top = float(np.clip((top[2] - top[3] * 0.3 - foot[2]) / (tip[2] - foot[2]), 0.3, 1.0))
+        stem = [axis(f) + np.r_[rng.normal(0, H * 0.012, 2), 0] * (0 < f < f_top)
+                for f in np.linspace(0, f_top, 6)]
+        self.tube(stem, np.linspace(r0, r1, len(stem)), bark)
+        if roots:
+            for a in rng.uniform(0, 2 * np.pi) + np.arange(5) * 2 * np.pi / 5:
+                d = np.array([np.cos(a), np.sin(a), 0.0])
+                self.tube([foot + [0, 0, r0 * 2.2], foot + d * r0 * 1.6 + [0, 0, r0 * 0.6], foot + d * r0 * 2.8],
+                          [r0 * 0.75, r0 * 0.5, r0 * 0.3], bark)
+        if limbs:
+            z0, z1 = stem[1][2], stem[-1][2]
+            for cx, cy, cz, r in lobes:
+                f = float(np.clip((cz - r * 0.9 - foot[2]) / max(tip[2] - foot[2], 1e-6), (z0 - foot[2]) / H, 0.95))
+                start = axis(f)
+                end = np.array([cx, cy, cz])
+                if np.linalg.norm(end - start) < r * 0.6:
+                    continue
+                mid = start + (end - start) * 0.55 + [0, 0, r * 0.3]
+                self.tube([start, mid, end], [r0 * 0.55, r0 * 0.4, r0 * 0.25], bark)
+        self.foliage(crown, leaves, clump=clump, density=density, tips=tips)
+        return {"trunk": [tuple(p) for p in stem], "lobes": [tuple(map(float, lb)) for lb in crown]}
+
+    def carve_to_reference(self, reference: str, view: dict, *, only=None, margin: float = 0.5,
+                           cutout: dict | None = None) -> int:
+        """Removes the voxels the reference shows as background: seen through `view`, with the
+        model's outline scaled to the reference's height and centred on it, any voxel whose centre
+        lands outside the reference's cutout (grown by `margin` voxels) is cut. Good for organic
+        outlines (crowns, bushes, rocks) that primitives only approximate. Get the camera and the
+        overall proportions right first (fit-camera, then a score with few red/blue areas): a wrong
+        camera or height cuts real parts. only = colour name(s) that may be cut (e.g. the leaves,
+        to keep a trunk or base intact). Returns the number of voxels removed."""
+        from scipy import ndimage
+        from .score import reference_transform
+        emissive = {i for i in self.pal.materials if self.pal.is_emissive(i)}
+        ref, cam, to_px, px_per_voxel = reference_transform(
+            self.v, self.pal.rgba, emissive, reference, view, cutout_kw=cutout,
+            cache_dir=os.path.join(os.getcwd(), "output", "_ref"), by="bbox")
+        near = ndimage.distance_transform_edt(ref[..., 3] <= 127) <= max(margin * px_per_voxel, 0.5)
+        pts = np.argwhere(self.v > 0)
+        if only is not None:
+            names = [only] if isinstance(only, (str, int)) else list(only)
+            pts = pts[np.isin(self.v[tuple(pts.T)], [self.pal.idx(c) for c in names])]
+        if not len(pts):
+            return 0
+        px = np.floor(to_px(cam.project(pts + 0.5))).astype(np.int64)
+        H, W = near.shape
+        ok = (px[:, 0] >= 0) & (px[:, 0] < W) & (px[:, 1] >= 0) & (px[:, 1] < H)
+        keep = np.zeros(len(pts), bool)
+        keep[ok] = near[px[ok, 1], px[ok, 0]]
+        cut = pts[~keep]
+        self.v[tuple(cut.T)] = 0
+        return len(cut)
+
     # ------------------------------------------------------------ colours from the reference
 
     def paint_reference(self, reference: str, view: dict, *, colors: int = 96, tol: float | None = 30.0,
@@ -661,3 +897,93 @@ class Model:
         backup = backup_if_edited(path)
         write_vox(path, scene)
         return backup
+
+
+# ---------------------------------------------------------------- helpers for plants
+
+def _hash01(a, b, c, salt: int = 0) -> np.ndarray:
+    """Deterministic pseudo-random value in [0, 1) per integer coordinate triple."""
+    u = lambda v: np.asarray(v).astype(np.int64).astype(np.uint64)                    # noqa: E731
+    h = (u(a) * np.uint64(73856093)) ^ (u(b) * np.uint64(19349663)) ^ (u(c) * np.uint64(83492791)) \
+        ^ np.uint64((salt * 2654435761) % 2 ** 32)
+    return ((h * np.uint64(2654435761)) % np.uint64(2 ** 32)).astype(np.float64) / 2 ** 32
+
+
+def _sphere_dirs(rng, n: int) -> np.ndarray:
+    """n unit vectors spread evenly over a sphere (Fibonacci lattice), turned and jittered at random."""
+    k = np.arange(n) + 0.5
+    z = 1 - 2 * k / n
+    a = np.pi * (1 + 5 ** 0.5) * k + rng.uniform(0, 2 * np.pi)
+    r = np.sqrt(np.maximum(1 - z ** 2, 0))
+    d = np.stack([r * np.cos(a), r * np.sin(a), z], 1) + rng.normal(0, 0.15, (n, 3))
+    return d / np.linalg.norm(d, axis=1, keepdims=True)
+
+
+def _catmull_rom(pts: np.ndarray, rad: np.ndarray, step: float = 1.5):
+    """Points (and radii, linearly) along a Catmull-Rom curve through pts, about `step` apart."""
+    P = np.vstack([2 * pts[0] - pts[1], pts, 2 * pts[-1] - pts[-2]])
+    out_p, out_r = [], []
+    for i in range(len(pts) - 1):
+        p0, p1, p2, p3 = P[i:i + 4]
+        n = max(2, int(np.ceil(np.linalg.norm(p2 - p1) / step)))
+        t = np.linspace(0, 1, n, endpoint=False)[:, None]
+        out_p.append(0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t ** 2
+                            + (3 * p1 - p0 - 3 * p2 + p3) * t ** 3))
+        out_r.append(rad[i] + (rad[i + 1] - rad[i]) * t[:, 0])
+    out_p.append(pts[-1:])
+    out_r.append(rad[-1:])
+    return np.vstack(out_p), np.concatenate(out_r)
+
+
+def _crown_lobes(style: str, axis, H: float, W: float, rng) -> list:
+    """Lobes (cx, cy, cz, r) for tree(style=...); axis(f) is the point at fraction f up the trunk."""
+    R = W / 2
+    out = []
+
+    def ring(f, dist, r_lobe, n):
+        c = axis(f)
+        for a in rng.uniform(0, 2 * np.pi) + np.arange(n) * 2 * np.pi / n:
+            d = dist * rng.uniform(0.85, 1.15)
+            out.append((c[0] + d * np.cos(a), c[1] + d * np.sin(a), c[2] + rng.normal(0, r_lobe * 0.25),
+                        r_lobe * rng.uniform(0.85, 1.15)))
+
+    if style == "round":
+        c = axis(0.66)
+        out.append((*c, R * 0.7))
+        for d in _sphere_dirs(rng, 10):
+            out.append((*(c + d * np.array([R * 0.55, R * 0.55, H * 0.2])), R * 0.45))
+    elif style in ("column", "cone"):
+        f0 = 0.14 if style == "column" else 0.18
+        n = max(4, int(round((0.97 - f0) * H / (R * 0.8))))
+        for f in np.linspace(f0, 0.97, n):
+            t = (f - f0) / (0.97 - f0)
+            prof = np.sin(np.pi * min(1.0, 0.15 + t)) ** 0.6 if style == "column" else 0.95 * (1 - t) ** 0.9 + 0.05
+            rr = max(R * prof, R * 0.25)
+            out.append((*axis(f), rr * 0.85))
+            if rr > R * 0.4:
+                ring(f, rr * 0.45, rr * 0.55, 3)
+    elif style == "tiered":                       # layers small enough to leave the trunk showing between them
+        gap = 0.24 * H
+        for j in range(3):
+            f, rr = 0.3 + j * 0.24, R * (1 - 0.22 * j)
+            r_l = min(rr * 0.4, gap * 0.42)
+            out.append((*axis(f), r_l))
+            ring(f, rr * 0.6, r_l, 5)
+        out.append((*axis(0.97), min(R * 0.3, gap * 0.4)))
+    elif style == "branched":
+        a = rng.uniform(0, 2 * np.pi)
+        for j in range(6):
+            f = 0.35 + 0.55 * j / 5
+            c, d = axis(f), R * (0.8 - 0.35 * j / 6)
+            out.append((c[0] + d * np.cos(a), c[1] + d * np.sin(a), c[2] + R * 0.2, R * (0.42 - 0.12 * j / 6)))
+            a += np.pi * rng.uniform(0.6, 1.0)
+        out.append((*axis(0.97), R * 0.38))
+    elif style == "spread":
+        c = axis(0.72)
+        for d in _sphere_dirs(rng, 14):
+            d[2] = abs(d[2]) * 0.5
+            out.append((*(c + d * np.array([R * 0.75, R * 0.75, H * 0.12])), R * 0.32))
+        out.append((*c, R * 0.45))
+    else:
+        raise ValueError(f"unknown tree style {style!r}: round, column, cone, tiered, branched or spread")
+    return out

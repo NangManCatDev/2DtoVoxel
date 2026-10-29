@@ -77,7 +77,33 @@ The player house at `--res 1`, `2` and `3` (125 thousand, 1 million and 3.4 mill
 
 ![The player house built at res 1, 2 and 3](images/res.jpg)
 
-`score --zoom bottom-right` on it shows what the full-image score can't: the reference's bushes spill over the planter and its face has cracks, while the build has a tidy hedge and a zigzag groove:
+### Trees, bushes and other plants
+
+Voxel-art foliage is a cluster of clusters: small clumps of a few cubes, grouped into lumps, grouped into the crown, with dark gaps between them. Primitives like `ellipsoid` or `blob` give smooth balls instead, so plants have their own tools:
+
+- `tube(points, radius, c)`: a trunk, branch or root along a curve through the points, tapering from one radius to the next; a colour list gives bark streaks.
+- `foliage(lobes, colors)`: a crown over lobes `(cx, cy, cz, r)` measured on the reference's outline. Each lobe gets sub-lobes and each sub-lobe small clumps (`clump`, in voxels), shaded light on top and outside, with a dark core showing in the gaps. Draw the trunk and limbs first; the leaves grow around them.
+- `tree(x, y, z, height, leaves, bark, style=...)`: trunk, root flare, a limb into every lobe and a `foliage` crown. Pass your own `lobes=` or let a style lay them out:
+
+![The six tree styles](images/trees.jpg)
+
+- `crown_depth(lobes, x, y, VIEW)`: lobes read off a picture all lie in one plane, the vertical plane through the trunk at `(x, y)` that faces the camera, so the crown is right from the front and flat from the side. This adds copies behind and in front of each lobe, horizontally, as deep as a crown that is round seen from above, and no further than the measured outline allows (from above at an angle, a lobe further back shows higher up). `tree(..., lobes=..., view=VIEW)` does it for you. Don't fill an outline with a flat layer of voxels facing the camera, or copy lobes along the line of sight: the front score goes up a little, but the tree turns into a tilted board seen from anywhere else.
+- `carve_to_reference(REFERENCE, VIEW, only=leaves)`: cuts the voxels that land on the reference's background, which tidies an organic outline that lobes only approximate. It scales the model's outline to the reference's height first, so get the proportions right before using it, and limit it with `only` so trunks and bases stay intact.
+
+On a sheet of five tall trees, keeping the same lobe and trunk measurements and only replacing the hand-written clump code with these tools gave:
+
+| Version | IoU | ΔE |
+|---|---|---|
+| Hand-written clumps (the script Claude wrote first) | 0.847 | 15.2 |
+| `tube` + `foliage` | 0.844 | 14.6 |
+| … + `carve_to_reference(only=leaves)` | 0.869 | 14.5 |
+| … + `paint_reference` | 0.869 | 10.7 |
+
+On a sheet of five spreading trees, the script Claude wrote first filled the outline with a voxel layer in the trunk's plane and copied lobes along the line of sight. It scored IoU 0.914 from the front, but every crown was a tilted slab from the side. Rebuilt from the same measurements with `crown_depth`, `foliage` and `tube`, the crowns are round from every side, at IoU 0.842 from the front. The score only looks from one direction, so check the side and back views in `_sheet.png` or with `voxtool angles`.
+
+When the reference is itself voxel art, match its grain: one reference cube should be one voxel. On the same trees, `--res 2` made the leaves finer than the picture's and scored lower (IoU 0.855, ΔE 13.3).
+
+`score --zoom bottom-right` on the player house shows what the full-image score can't: the reference's bushes spill over the planter and its face has cracks, while the build has a tidy hedge and a zigzag groove:
 
 ![Zoomed comparison of the planter: reference, build and difference](images/zoom.jpg)
 
@@ -108,6 +134,11 @@ All methods live on `Model` ([voxtool/model.py](../voxtool/model.py)). `c` is a 
 | | `vine(x, y, z, length, colors, wall="-y", drift=0.35, leaf=0.6, spread=1)` | Vine hanging down a wall |
 | | `sprinkle(colors, prob, target, region=None)` | Recolour random surface voxels (flowers in a bush) |
 | | `scatter_on_top(region, colors, prob, target=None)` | Place voxels on top of exposed surfaces |
+| Plants | `tube(points, radius, c, smooth=True)` | Curved, tapering limb (trunk, branch, root); a colour list gives bark streaks |
+| | `foliage(lobes, colors, clump=1.8, density=1.0, core=None, tips=None)` | Lumpy leafy crown over lobes `(cx, cy, cz, r)`, colours dark → light |
+| | `crown_depth(lobes, x, y, view, fill=1.0)` | Spread lobes measured on a picture through the crown's depth |
+| | `tree(x, y, z, height, leaves, bark, style="round", width=None, lobes=None, view=None, ...)` | Whole tree; styles `round`, `column`, `cone`, `tiered`, `branched`, `spread`; `view` with measured `lobes` |
+| Reference fit | `carve_to_reference(reference, view, only=None, margin=0.5, cutout=None)` | Cut voxels that land on the reference's background |
 | Reference colours | `paint_reference(reference, view, colors=96, tol=30, only=None, blend=1.0, cutout=None)` | Paint the voxels the reference shows with its own pixels (call last); new colours are named `<colour>_r1`, … |
 | Model | `Model(w, d, h, seed=0, res=1)` | Grid in design units; `res` voxels per unit (`m.res`, `m.dims`; `m.size` is the voxel grid) |
 | Objects & files | `with m.part(name): ...` | Voxels drawn inside become a separate object in the `.vox` (kit sheets) |

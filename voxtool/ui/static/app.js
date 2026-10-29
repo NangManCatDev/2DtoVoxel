@@ -104,6 +104,80 @@ document.addEventListener('click', (e) => {
   lightbox.hidden = false;
 });
 
+// ------------------------------------------------------------------ confirmation dialog
+// Resolves true when the confirm button is clicked; Escape, Cancel or a click outside resolve false.
+function confirmDialog({ title, body, confirm, disabled = false }) {
+  return new Promise((resolve) => {
+    const before = document.activeElement;
+    const wrap = document.createElement('div');
+    wrap.className = 'modal-backdrop';
+    wrap.innerHTML = `<div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-body">
+        <h2 id="modal-title">${esc(title)}</h2>
+        <div id="modal-body" class="modal-body">${body}</div>
+        <div class="modal-actions">
+          <button class="btn" type="button" data-act="cancel">${tt('dlg.cancel')}</button>
+          <button class="btn danger-solid" type="button" data-act="ok" ${disabled ? 'disabled' : ''}>${esc(confirm)}</button>
+        </div></div>`;
+    const buttons = () => [...wrap.querySelectorAll('button:not([disabled])')];
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(false); }
+      if (e.key === 'Tab') {                 // keep focus inside the dialog
+        const b = buttons(), i = b.indexOf(document.activeElement);
+        e.preventDefault();
+        b[(i + (e.shiftKey ? b.length - 1 : 1)) % b.length].focus();
+      }
+    };
+    function close(ok) {
+      document.removeEventListener('keydown', onKey, true);
+      wrap.remove();
+      before?.focus?.();
+      resolve(ok);
+    }
+    wrap.addEventListener('click', (e) => {
+      if (e.target === wrap) return close(false);
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act) close(act === 'ok');
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.append(wrap);
+    wrap.querySelector('[data-act="cancel"]').focus();
+  });
+}
+
+// ------------------------------------------------------------------ deleting a model
+const TRASH_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" '
+  + 'stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+
+async function askDelete(slug) {
+  let info;
+  try { info = await api(`/api/models/${encodeURIComponent(slug)}/delete-check`); } catch (e) { return fail(e); }
+  const warn = [];
+  if (info.running) warn.push(tt('del.running'));
+  if (info.used_by.length) warn.push(tt('del.usedBy', { list: info.used_by.join(', ') }));
+  if (info.edited) warn.push(tt('del.edited'));
+  const body = `<p>${tt('del.body')}</p>
+    <ul>${info.items.map((p) => `<li><code>${esc(p)}</code></li>`).join('')}</ul>
+    <p class="muted">${tt('del.keepRef')}</p>
+    ${warn.map((w) => `<p class="warn-line">${w}</p>`).join('')}`;
+  const ok = await confirmDialog({ title: t('del.title', { name: slug }), body, confirm: t('del.confirm'),
+    disabled: info.running });
+  if (!ok) return;
+  try {
+    const r = await post(`/api/models/${encodeURIComponent(slug)}/delete`);
+    toast(t('del.done', { name: slug, path: r.trash }));
+    const [, kind, id] = state.route.split('/');
+    if (kind === 'model' && decodeURIComponent(id || '') === slug) location.hash = '#/';
+    lastSidebar = '';
+    refreshSidebar();
+  } catch (e) { fail(e); }
+}
+document.getElementById('model-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-del]');
+  if (!btn) return;
+  e.preventDefault();
+  askDelete(btn.dataset.del);
+});
+
 // ------------------------------------------------------------------ sidebar
 let lastSidebar = '';
 async function refreshSidebar() {
@@ -121,7 +195,8 @@ async function refreshSidebar() {
         <span class="thumb" style="${m.thumb ? `background-image:url('${m.thumb}')` : ''}"></span>
         <span class="meta"><div class="nm">${esc(m.slug)}</div><div class="sub">${esc(sub)}</div></span>
         ${m.running ? '<span class="dot running"></span>' : ''}
-      </a></li>`;
+      </a>${m.pending ? '' : `<button class="del" type="button" data-del="${esc(m.slug)}" title="${tt('del.button')}"
+        aria-label="${tt('del.aria', { name: m.slug })}">${TRASH_ICON}</button>`}</li>`;
     }).join('') : `<li class="empty">${tt('nav.noModels')}</li>`;
     document.getElementById('job-list').innerHTML = state.jobs.length ? state.jobs.slice(0, 8).map((j) => `
       <li><a href="#/job/${esc(j.id)}" data-job="${esc(j.id)}">
