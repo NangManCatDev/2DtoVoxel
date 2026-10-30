@@ -83,18 +83,10 @@ This job was started automatically by the 2DtoVoxel web UI. You cannot ask the u
 - Finish with a short reply in English: what you built or changed, the final score, and how it differs from the reference.""",
         "limit": "\n- Build at most {n} times in this job.",
         "generate": """\
-Turn the reference image into a professional MagicaVoxel model for game assets.
+Follow .claude/skills/voxelize/SKILL.md to turn the reference image into a MagicaVoxel model.
 - Reference: {reference}
 - Model name (slug): {name}  → script models/{name}.py, NAME = "{name}", REFERENCE = "{reference}"
-- Extra requests: {notes}
-
-Quality guidelines for game-ready assets:
-1. **Color palette**: Use 3-7 carefully chosen colors (NOT paint_reference() - it breaks quality). Add colors with m.pal.add(name, "#hex").
-2. **Resolution**: Use RES = 3 or higher for detail.
-3. **Camera**: Set VIEW = {{"azimuth": ..., "elevation": ..., "fov": 0}} (orthographic for games, no perspective distortion).
-4. **Structure**: Build with `m.part()` for modular, movable pieces in Unity.
-5. **Shading**: Use color variations (light/mid/dark) and strategic placement for depth and shadow, not paint_reference().
-6. **No paint_reference()**: Remove it entirely - just use your color palette for professional, consistent results.""",
+- Extra requests: {notes}""",
         "none": "none",
         "refine": """\
 Modify the existing model models/{name}.py as requested below. ({ref})
@@ -118,18 +110,10 @@ _score.png and _sheet.png with Read → repeat until the request is met. Leave u
 - 마지막 답변은 한국어로 짧게: 무엇을 만들었/바꿨는지, 최종 점수, 레퍼런스와 다른 점.""",
         "limit": "\n- 이 작업에서 빌드는 최대 {n}번까지만 한다.",
         "generate": """\
-게임 에셋용 전문 수준의 MagicaVoxel 모델을 만들어.
+.claude/skills/voxelize/SKILL.md 절차대로 레퍼런스 이미지를 MagicaVoxel 모델로 만들어.
 - 레퍼런스: {reference}
 - 모델 이름(slug): {name}  → 스크립트 models/{name}.py, NAME = "{name}", REFERENCE = "{reference}"
-- 추가 요청: {notes}
-
-게임 에셋 품질 지침:
-1. **색상 팔레트**: 3~7개의 신중하게 선택한 색상만 사용 (paint_reference() 금지 - 품질 저하). m.pal.add(이름, "#hex")로 추가.
-2. **해상도**: RES = 3 이상 사용 (디테일 강조).
-3. **카메라**: VIEW = {"azimuth": ..., "elevation": ..., "fov": 0} 설정 (원근 없는 정사각 투영, 게임용).
-4. **구조**: m.part()로 모듈식 구성 (Unity에서 각 부분을 따로 움직일 수 있음).
-5. **음영**: 색상 변화(밝음/중간/어두움)와 배치로 깊이감 표현, paint_reference() 대신 사용.
-6. **절대 금지**: paint_reference() 사용하면 안 됨 - 색상 팔레트로만 전문적이고 일관된 결과 만들기.""",
+- 추가 요청: {notes}""",
         "none": "없음",
         "refine": """\
 기존 모델 models/{name}.py 를 아래 요청대로 수정해. ({ref})
