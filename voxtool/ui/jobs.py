@@ -272,7 +272,7 @@ class JobManager:
         exe = find_claude()
         if not exe:
             raise UserError("no_claude")
-        meta = dict(meta or {}, budget=budget, max_builds=max_builds, resumed=bool(resume))
+        meta = dict(meta or {}, model=model, budget=budget, max_builds=max_builds, resumed=bool(resume))
         job = self._new(kind, name, f"{kind} · {name}", meta)
         (ROOT / "output" / "_scratch").mkdir(parents=True, exist_ok=True)  # the prompt points Claude here
         cmd = [exe, "-p", "--output-format", "stream-json", "--verbose",
@@ -290,12 +290,12 @@ class JobManager:
         threading.Thread(target=self._run_claude, args=(job, cmd, prompt), daemon=True).start()
         return job
 
-    def cancel(self, job_id: str, key: str = "cancelled") -> bool:
+    def cancel(self, job_id: str, key: str = "cancelled", **vars) -> bool:
         job = self.jobs.get(job_id)
         if not job or job.status != "running":
             return False
         job.status = "cancelled"
-        job.add("error", key=key)
+        job.add("error", key=key, **vars)
         if job.proc:
             _kill_tree(job.proc)
         return True
@@ -377,7 +377,11 @@ class JobManager:
         t = ev.get("type")
         if t == "system" and ev.get("subtype") == "init":
             job.meta["session_id"] = ev.get("session_id")
-            job.add("info", key="session", model=ev.get("model", ""))
+            model = ev.get("model", "")
+            job.add("info", key="session", model=model)
+            # "Default" follows Claude Code's current model, which can silently be Haiku; its scripts were junk
+            if not job.meta.get("model") and "haiku" in model.lower():
+                self.cancel(job.id, key="weak_model", model=model)
         elif t == "assistant":
             for c in ev.get("message", {}).get("content", []):
                 if c.get("type") == "text" and c.get("text", "").strip():

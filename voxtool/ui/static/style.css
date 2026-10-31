@@ -119,6 +119,16 @@ main { padding: 26px 32px 60px; min-width: 0; }
 .model-list .del svg { width: 15px; height: 15px; }
 .model-list li:hover .meta, .model-list li:focus-within .meta { padding-right: 30px; }
 @media (hover: none) { .model-list .del { opacity: 1; } .model-list .meta { padding-right: 30px; } }
+.trash-link {
+  display: flex; align-items: center; gap: 6px; margin: 6px 0 0; padding: 5px 8px; border-radius: 8px;
+  color: var(--muted); font-size: 12.5px;
+}
+.trash-link svg { width: 14px; height: 14px; flex: none; }
+.trash-link:hover { background: var(--panel); text-decoration: none; color: var(--text); }
+.trash-link.active { background: var(--accent-soft); color: var(--text); }
+.trash-item { margin-bottom: 12px; }
+.trash-item .row { flex-wrap: wrap; gap: 8px; }
+.trash-item .files { margin: 8px 0 0; }
 .job-list a { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px; color: var(--text); font-size: 12.5px; }
 .job-list a:hover { background: var(--panel); text-decoration: none; }
 .job-list a.active { background: var(--accent-soft); }

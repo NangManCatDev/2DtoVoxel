@@ -86,7 +86,7 @@ Start it with `voxtool ui`, `2DtoVoxel.bat` (Windows) or `./2dtovoxel.sh` (macOS
 2. Watch the live log; each build shows up with its score.
 3. On the model page, compare with the reference, read the score map, rotate the model in 3D, open it in MagicaVoxel, download the `.vox`, or export game assets.
 4. **Request changes** in plain words. Tick "Continue the previous conversation" to skip re-analysis.
-5. To delete a model, hover it in the sidebar and click the bin icon. After you confirm, its script and outputs move to `output/_trash/`, so you can still move them back.
+5. To delete a model, hover it in the sidebar and click the bin icon. After you confirm, its script and outputs move to `output/_trash/`; **Trash** below the model list restores them.
 
 | New model | Model page (score tab) | 3D preview |
 |---|---|---|

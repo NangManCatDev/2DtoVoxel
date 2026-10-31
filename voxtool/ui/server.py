@@ -85,7 +85,13 @@ def model_paths(slug: str) -> dict:
     return {"script": script, "info": info, "dir": out, "vox": out / f"{n}.vox",
             "iso": out / f"{n}_iso.png", "sheet": out / f"{n}_sheet.png", "compare": out / f"{n}_compare.png",
             "angles": out / f"{n}_angles.png", "score": out / f"{n}_score.png", "fit": out / f"{n}_fit.png",
+            "turn": out / f"{n}_turn.png", "zoom": _newest(out.glob(f"{n}_zoom_*.png")) or out / f"{n}_zoom.png",
             "scores": out / f"{n}_scores.jsonl"}
+
+
+def _newest(paths) -> Path | None:
+    paths = list(paths)
+    return max(paths, key=lambda p: p.stat().st_mtime) if paths else None
 
 
 def list_models() -> list[dict]:
@@ -139,7 +145,8 @@ def model_detail(slug: str) -> dict | None:
     info = mp["info"]
     ref = info["reference"]
     ref_path = ROOT / ref if ref else None
-    imgs = {k: file_url(mp[k]) for k in ("compare", "score", "sheet", "iso", "angles", "fit") if mp[k].exists()}
+    imgs = {k: file_url(mp[k]) for k in ("compare", "score", "zoom", "sheet", "turn", "iso", "angles", "fit")
+            if mp[k].exists()}
     # copies of MagicaVoxel-edited files that a build would otherwise have overwritten
     backups = sorted(mp["dir"].glob(f"{info['name']}_edited_*.vox"), reverse=True)
     history = []
@@ -202,6 +209,58 @@ def delete_model(slug: str) -> dict:
         src = ROOT / rel.rstrip("/")
         shutil.move(str(src), str(dest / src.name))
     return {"ok": True, "trash": dest.relative_to(ROOT).as_posix() + "/"}
+
+
+TRASH_ID = re.compile(r"^[\w.-]+$")
+
+
+def list_trash() -> list[dict]:
+    """Folders in output/_trash/, newest first, with what each holds."""
+    if not TRASH.is_dir():
+        return []
+    out = []
+    for d in TRASH.iterdir():
+        if d.is_dir():
+            items = sorted(p.name + ("/" if p.is_dir() else "") for p in d.iterdir())
+            out.append({"id": d.name, "time": d.stat().st_mtime, "items": items})
+    return sorted(out, key=lambda e: e["time"], reverse=True)
+
+
+def _trash_dir(entry: str) -> Path:
+    d = TRASH / entry
+    if not TRASH_ID.match(entry) or not d.is_dir():
+        raise UserError("no_trash")
+    return d
+
+
+def restore_trash(entry: str) -> dict:
+    """Moves a deleted model back: scripts and base .vox files to models/, folders to output/.
+    Refuses (moving nothing) if any of them already exists there."""
+    d = _trash_dir(entry)
+    moves = []
+    for p in d.iterdir():
+        if p.is_dir():
+            moves.append((p, ROOT / "output" / p.name))
+        elif p.suffix == ".py" or p.name.endswith(".base.vox"):
+            moves.append((p, ROOT / "models" / p.name))
+    if not moves:
+        raise UserError("no_trash")
+    for _, dst in moves:
+        if dst.exists():
+            raise UserError("restore_conflict", path=dst.relative_to(ROOT).as_posix())
+    for src, dst in moves:
+        shutil.move(str(src), str(dst))
+    if not any(d.iterdir()):
+        d.rmdir()
+    return {"ok": True, "restored": [dst.relative_to(ROOT).as_posix() for _, dst in moves]}
+
+
+def purge_trash(entry: str | None) -> dict:
+    """Erases one trash folder, or all of them (entry None) - the only place the UI deletes for good."""
+    targets = [_trash_dir(entry)] if entry else [d for d in TRASH.iterdir() if d.is_dir()] if TRASH.is_dir() else []
+    for d in targets:
+        shutil.rmtree(d)
+    return {"ok": True, "removed": len(targets)}
 
 
 VIEWER_MAX = 400_000    # surface voxels the 3D viewer gets; bigger models are sent coarser
@@ -337,6 +396,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(list_references())
             if path == "/api/jobs":
                 return self._json(JOBS.list())
+            if path == "/api/trash":
+                return self._json(list_trash())
             m = re.fullmatch(r"/api/jobs/([\w-]+)", path)
             if m:
                 job = JOBS.get(m.group(1))
@@ -380,6 +441,11 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r"/api/models/([a-z0-9_]+)/delete", path)
             if m:
                 return self._json(delete_model(m.group(1)))
+            m = re.fullmatch(r"/api/trash/([\w.-]+)/(restore|purge)", path)
+            if m:
+                return self._json(restore_trash(m.group(1)) if m.group(2) == "restore" else purge_trash(m.group(1)))
+            if path == "/api/trash/purge":
+                return self._json(purge_trash(None))
             m = re.fullmatch(r"/api/models/([a-z0-9_]+)/(open|shot)", path)
             if m:
                 mp = model_paths(m.group(1))

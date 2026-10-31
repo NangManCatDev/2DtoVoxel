@@ -38,6 +38,11 @@ MESSAGES = {
         "en": "Could not capture the MagicaVoxel window. Is MagicaVoxel running?",
         "ko": "MagicaVoxel 창을 캡처하지 못했습니다. MagicaVoxel이 실행 중인지 확인하세요.",
     },
+    "no_trash": {"en": "That trash entry no longer exists.", "ko": "휴지통에 그 항목이 더 이상 없습니다."},
+    "restore_conflict": {
+        "en": "Can't restore: {path} already exists. Rename or delete it first.",
+        "ko": "되살릴 수 없습니다: {path}가 이미 있습니다. 먼저 이름을 바꾸거나 지우세요.",
+    },
 }
 
 

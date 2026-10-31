@@ -86,6 +86,18 @@ def test_other_models_builds_are_not_iterations(manager):
     assert job.iterations == []
 
 
+@pytest.mark.parametrize("requested, session, stopped", [
+    ("", "claude-haiku-4-5-20251001", True),
+    ("", "claude-opus-5-5", False),
+    ("haiku", "claude-haiku-4-5-20251001", False),
+])
+def test_default_model_that_is_haiku_stops_the_job(manager, requested, session, stopped):
+    job = manager._new("generate", "hut", "generate · hut", {"model": requested})
+    manager._handle_event(job, {"type": "system", "subtype": "init", "session_id": "s", "model": session})
+    assert (job.status == "cancelled") is stopped
+    assert any(e.get("key") == "weak_model" for e in job.log) is stopped
+
+
 # ---------------------------------------------------------------- server (real process)
 
 @pytest.fixture
@@ -159,3 +171,23 @@ def test_delete_moves_a_model_to_the_trash(server, workspace):
     assert "hut" not in slugs and "village" in slugs
     code, err = _post(url + "api/models/hut/delete", {}, token, "ko")
     assert code == 400 and err["code"] == "no_script"
+
+
+def test_trash_restore_and_purge(server, workspace):
+    url, token = server
+    code, r = _post(url + "api/models/hut/delete", {}, token)
+    entry = r["trash"].split("/")[-2]
+    trash = json.loads(urllib.request.urlopen(url + "api/trash").read())
+    assert [e["id"] for e in trash] == [entry] and "hut.py" in trash[0]["items"]
+    (workspace / "models" / "hut.py").write_text("NAME = 'hut'\n", encoding="utf-8")       # a new hut in the way
+    code, err = _post(url + f"api/trash/{entry}/restore", {}, token)
+    assert code == 400 and err["code"] == "restore_conflict" and (workspace / r["trash"] / "hut.py").exists()
+    (workspace / "models" / "hut.py").unlink()
+    code, ok = _post(url + f"api/trash/{entry}/restore", {}, token)
+    assert code == 200 and "models/hut.py" in ok["restored"] and (workspace / "models" / "hut.py").exists()
+    assert json.loads(urllib.request.urlopen(url + "api/trash").read()) == []
+    _post(url + "api/models/hut/delete", {}, token)
+    assert _post(url + "api/trash/purge", {})[0] == 403                           # no token
+    code, gone = _post(url + "api/trash/purge", {}, token)
+    assert code == 200 and gone["removed"] == 1 and not any((workspace / "output" / "_trash").iterdir())
+    assert _post(url + "api/trash/../models/restore", {}, token)[0] in (400, 404)

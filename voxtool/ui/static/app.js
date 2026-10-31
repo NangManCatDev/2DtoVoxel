@@ -22,7 +22,7 @@ async function api(path, opts = {}) {
 }
 const post = (path, body = {}) => api(path, { method: 'POST', body });
 
-const state = { status: null, models: [], jobs: [], timers: [], cleanup: [], route: '' };
+const state = { status: null, models: [], jobs: [], trash: [], timers: [], cleanup: [], route: '' };
 
 function every(ms, fn) { state.timers.push(setInterval(fn, ms)); }
 function onLeave(fn) { state.cleanup.push(fn); }
@@ -106,17 +106,17 @@ document.addEventListener('click', (e) => {
 
 // ------------------------------------------------------------------ confirmation dialog
 // Resolves true when the confirm button is clicked; Escape, Cancel or a click outside resolve false.
-function confirmDialog({ title, body, confirm, disabled = false }) {
+function confirmDialog({ title, body = '', confirm, disabled = false, danger = true }) {
   return new Promise((resolve) => {
     const before = document.activeElement;
     const wrap = document.createElement('div');
     wrap.className = 'modal-backdrop';
     wrap.innerHTML = `<div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-body">
         <h2 id="modal-title">${esc(title)}</h2>
-        <div id="modal-body" class="modal-body">${body}</div>
+        ${body ? `<div id="modal-body" class="modal-body">${body}</div>` : ''}
         <div class="modal-actions">
           <button class="btn" type="button" data-act="cancel">${tt('dlg.cancel')}</button>
-          <button class="btn danger-solid" type="button" data-act="ok" ${disabled ? 'disabled' : ''}>${esc(confirm)}</button>
+          <button class="btn ${danger ? 'danger-solid' : 'primary'}" type="button" data-act="ok" ${disabled ? 'disabled' : ''}>${esc(confirm)}</button>
         </div></div>`;
     const buttons = () => [...wrap.querySelectorAll('button:not([disabled])')];
     const onKey = (e) => {
@@ -178,16 +178,56 @@ document.getElementById('model-list').addEventListener('click', (e) => {
   askDelete(btn.dataset.del);
 });
 
+// ------------------------------------------------------------------ trash
+async function viewTrash() {
+  let entries;
+  try { entries = await api('/api/trash'); } catch (e) { return fail(e); }
+  main.innerHTML = `<section class="page">
+    <div class="page-head">
+      <div><h1>${tt('trash.title')}</h1><div class="muted">${tt('trash.hint')}</div></div>
+      <div class="actions">${entries.length ? `<button class="btn danger" id="trash-empty">${tt('trash.empty')}</button>` : ''}</div>
+    </div>
+    ${entries.length ? entries.map((en) => `
+      <div class="card trash-item">
+        <div class="row"><b class="mono">${esc(en.id)}</b><span class="muted small">${esc(ago(en.time))}</span><span class="spacer"></span>
+          <button class="btn primary" data-restore-trash="${esc(en.id)}">${tt('trash.restore')}</button>
+          <button class="btn danger" data-purge="${esc(en.id)}">${tt('trash.purge')}</button></div>
+        <ul class="files">${en.items.map((i) => `<li><code>${esc(i)}</code></li>`).join('')}</ul>
+      </div>`).join('') : `<p class="muted">${tt('trash.none')}</p>`}
+  </section>`;
+  const after = (msg) => { toast(msg); lastSidebar = ''; refreshSidebar(); viewTrash(); };
+  main.querySelectorAll('[data-restore-trash]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      const r = await post(`/api/trash/${encodeURIComponent(b.dataset.restoreTrash)}/restore`);
+      after(t('trash.restored', { list: r.restored.join(', ') }));
+    } catch (e) { fail(e); b.disabled = false; }
+  }));
+  main.querySelectorAll('[data-purge]').forEach((b) => b.addEventListener('click', async () => {
+    if (!await confirmDialog({ title: t('trash.purgeTitle', { name: b.dataset.purge }),
+      body: `<p>${tt('trash.purgeBody')}</p>`, confirm: t('trash.purge') })) return;
+    try { await post(`/api/trash/${encodeURIComponent(b.dataset.purge)}/purge`); after(t('trash.purged')); } catch (e) { fail(e); }
+  }));
+  document.getElementById('trash-empty')?.addEventListener('click', async () => {
+    if (!await confirmDialog({ title: t('trash.emptyTitle', { n: entries.length }),
+      body: `<p>${tt('trash.purgeBody')}</p>`, confirm: t('trash.empty') })) return;
+    try { await post('/api/trash/purge'); after(t('trash.purged')); } catch (e) { fail(e); }
+  });
+}
+
 // ------------------------------------------------------------------ sidebar
 let lastSidebar = '';
 async function refreshSidebar() {
   try {
-    const [models, jobs] = await Promise.all([api('/api/models'), api('/api/jobs')]);
-    state.models = models; state.jobs = jobs;
+    const [models, jobs, trash] = await Promise.all([api('/api/models'), api('/api/jobs'), api('/api/trash')]);
+    state.models = models; state.jobs = jobs; state.trash = trash;
   } catch (e) { return; }
-  const sig = JSON.stringify([state.models, state.jobs.slice(0, 8), Math.floor(Date.now() / 60000)]);
+  const sig = JSON.stringify([state.models, state.jobs.slice(0, 8), state.trash.length, Math.floor(Date.now() / 60000)]);
   if (sig !== lastSidebar) {
     lastSidebar = sig;
+    const trashLink = document.getElementById('trash-link');
+    trashLink.hidden = !state.trash.length;
+    trashLink.innerHTML = `${TRASH_ICON}<span>${tt('trash.link', { n: state.trash.length })}</span>`;
     document.getElementById('model-list').innerHTML = state.models.length ? state.models.map((m) => {
       const sub = m.running ? (m.pending ? t('nav.generating') : t('nav.running')) : (m.title || (m.has_vox ? '' : t('nav.noVox')));
       return `
@@ -209,6 +249,7 @@ function highlight() {
   const [, kind, id] = state.route.split('/');
   document.querySelectorAll('#model-list a').forEach((a) => a.classList.toggle('active', kind === 'model' && a.dataset.slug === id));
   document.querySelectorAll('#job-list a').forEach((a) => a.classList.toggle('active', kind === 'job' && a.dataset.job === id));
+  document.getElementById('trash-link').classList.toggle('active', kind === 'trash');
 }
 
 async function loadStatus() {
@@ -232,6 +273,7 @@ function route() {
   if (kind === 'new') viewNew();
   else if (kind === 'model' && id) viewModel(decodeURIComponent(id), sub || 'compare');
   else if (kind === 'job' && id) viewJob(id);
+  else if (kind === 'trash') viewTrash();
   else viewHome();
   highlight();
 }
@@ -239,7 +281,7 @@ window.addEventListener('hashchange', route);
 
 const modelOptions = (short = false) => `
   <option value="">${tt(short ? 'model.defaultShort' : 'model.default')}</option>
-  <option value="opus">${short ? 'Opus' : tt('model.opus')}</option>
+  <option value="opus" selected>${short ? 'Opus' : tt('model.opus')}</option>
   <option value="sonnet">${short ? 'Sonnet' : tt('model.sonnet')}</option>`;
 
 // cost / build limits shared by "new model" and "request changes"
@@ -438,8 +480,9 @@ async function viewModel(slug, tab) {
     return;
   }
   const docLines = (d.doc || '').split('\n');
-  const tabs = [['compare', d.images.compare], ['score', d.images.score], ['sheet', d.images.sheet], ['3d', d.vox_url],
-    ['angles', d.images.angles], ['fit', d.images.fit], ['script', true]].filter((x) => x[1]).map((x) => x[0]);
+  const tabs = [['compare', d.images.compare], ['score', d.images.score], ['zoom', d.images.zoom], ['sheet', d.images.sheet],
+    ['turn', d.images.turn], ['3d', d.vox_url], ['angles', d.images.angles], ['fit', d.images.fit], ['script', true]]
+    .filter((x) => x[1]).map((x) => x[0]);
   if (!tabs.includes(tab)) tab = tabs[0];
   const st = d.stats;
   const n = (v) => v.toLocaleString(locale());
@@ -523,7 +566,7 @@ async function viewModel(slug, tab) {
     tabEl.innerHTML = `<div class="row" style="margin-bottom:8px"><span class="muted mono">models/${esc(slug)}.py</span><span class="spacer"></span>
       <a class="btn" href="${esc(vs)}">${tt('script.vscode')}</a></div><pre class="code">${esc(d.script)}</pre>`;
   } else {
-    const hint = { score: 'tab.scoreHint', fit: 'tab.fitHint' }[tab];
+    const hint = { score: 'tab.scoreHint', fit: 'tab.fitHint', zoom: 'tab.zoomHint', turn: 'tab.turnHint' }[tab];
     tabEl.innerHTML = `${hint ? `<p class="muted small" style="margin:0 0 8px">${tt(hint)}</p>` : ''}
       <div class="media"><img src="${d.images[tab]}" alt="" data-zoom></div>`;
   }
@@ -681,7 +724,9 @@ async function viewJob(id) {
     const b = e.target.closest('[data-restore]');
     if (!b) return;
     const n = Number(b.dataset.restore);
-    if (!confirm(t('iter.confirm', { n: n === 0 ? t('iter.before') : t('iter.build', { n }) }))) return;
+    const label = n === 0 ? t('iter.before') : t('iter.build', { n });
+    if (!await confirmDialog({ title: t('iter.confirmTitle', { n: label }), body: `<p>${tt('iter.confirm', { n: label })}</p>`,
+      confirm: t('iter.restore'), danger: false })) return;
     b.disabled = true;
     try {
       const build = await post(`/api/jobs/${id}/restore`, { n });
@@ -708,7 +753,7 @@ async function viewJob(id) {
     });
   }
   document.getElementById('cancel').addEventListener('click', async () => {
-    if (!confirm(t('job.confirmCancel'))) return;
+    if (!await confirmDialog({ title: t('job.confirmCancel'), confirm: t('job.cancel') })) return;
     try { await post(`/api/jobs/${id}/cancel`); } catch (e) { fail(e); }
   });
 }
