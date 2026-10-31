@@ -33,7 +33,7 @@
 - The 3D viewer handles grids over 255 (16-bit coordinates) and shows very large models coarser instead of freezing.
 - The `/voxelize` skill has a high-resolution finishing step.
 
-- README rewritten with [readme-craft](https://github.com/motiful/readme-craft): logo, why / features / when to use / quick start up front, and the details moved to `docs/` (how it works, model scripts, command line, troubleshooting), in English and Korean.
+- README rewritten as one detailed page in English and Korean: what the project does in plain words and an "At a glance" table first, then a gallery, how it works, install, quick start, the web UI screen by screen, the score and the checks, model scripts, conversions, game assets, a full command reference, output files, tips, limitations, troubleshooting, security and the project layout. Algorithms and the full DSL reference remain in `docs/`.
 - Added `CONTRIBUTING.md`, `.github/repo-meta.yml` (About description and topics) and a logo.
 - README shows a real generation run (scores per build, time, cost) with an animation of each build.
 - `CLAUDE.md` is now in English.

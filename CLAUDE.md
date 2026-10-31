@@ -62,11 +62,15 @@ and rebuilt another model, overwriting the user's MagicaVoxel edits.)
   errors in `UserError(key)` from `voxtool/ui/i18n.py`, Claude prompts in `PROMPTS[lang]` in `jobs.py`. Always add
   new text in both languages. Job log entries are stored as a `key` instead of a sentence, so switching the UI
   language also re-words past logs.
-- README is `README.md` (English) and `README.ko.md` (Korean), structured with readme-craft: a short storefront
-  (logo, one-liner, badges, why, features, when to use, quick start, install, usage) with teasers linking to
-  `docs/how-it-works`, `docs/model-scripts`, `docs/cli` and `docs/troubleshooting` (each `.md` + `.ko.md`).
-  When you change one language, change the other; deep detail goes in `docs/`, images in `docs/images/`,
-  logos in `.github/logo-{light,dark}.svg`, About/topics in `.github/repo-meta.yml`. Contributor info: `CONTRIBUTING.md`.
+- README is `README.md` (English) and `README.ko.md` (Korean), one detailed page with the same sections in both:
+  a plain-words first paragraph and an "At a glance" table (so a reader or an AI skimming knows what the repo does),
+  then gallery, how it works, install, quick start, web UI, Claude Code, score and checks, a real run, model scripts,
+  conversions, game assets, CLI reference, outputs, tips, limitations, troubleshooting, security, layout,
+  development. Don't go back to a short storefront with teasers (the user found the readme-craft version hard to
+  read). Algorithms and the full DSL reference stay in `docs/how-it-works`, `docs/model-scripts`, `docs/cli` and
+  `docs/troubleshooting` (each `.md` + `.ko.md`); keep README facts in sync with them. When you change one
+  language, change the other; UI button names must match `i18n.js`. Images in `docs/images/`, About/topics in
+  `.github/repo-meta.yml`. Contributor info: `CONTRIBUTING.md`.
 
 ## CLI (`VT` = `py -m voxtool` / `python3 -m voxtool` / `voxtool`)
 ```
