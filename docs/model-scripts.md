@@ -14,6 +14,7 @@ Every model is a Python file in `models/`. Claude writes and edits these scripts
 | `VIEW` | no | Preview camera, e.g. `{"azimuth": 36, "elevation": 18, "fov": 0}`. Azimuth 0 looks straight at the front, 90 at the left side; `fov` > 0 is a perspective camera |
 | `SCORE_VIEW` | no | Camera used for scoring if it differs from `VIEW` (conversions score from the front) |
 | `CUTOUT` | no | Background-removal settings, e.g. `{"keep": "all"}` for a sheet with several objects |
+| `EXTRA_REFERENCES` | no | More pictures of the same object, each with the camera it shows it from, e.g. `[("reference/x_side.png", {"azimuth": 90, "elevation": 0})]` (a third item overrides `CUTOUT`). Every build scores each one too. For drawings: front 0, left 90, back 180, right 270, top `"elevation": 90`; otherwise `voxtool fit-camera ... --ref 1` |
 | `RES` | no | Voxels per design unit, used as `Model(..., res=RES)`; `voxtool build --res N` overrides it (see [High-resolution models](#high-resolution-models)) |
 
 ## Coordinates
@@ -87,7 +88,7 @@ Voxel-art foliage is a cluster of clusters: small clumps of a few cubes, grouped
 
 ![The six tree styles](images/trees.jpg)
 
-- `crown_depth(lobes, x, y, VIEW)`: lobes read off a picture all lie in one plane, the vertical plane through the trunk at `(x, y)` that faces the camera, so the crown is right from the front and flat from the side. This adds copies behind and in front of each lobe, horizontally, as deep as a crown that is round seen from above, and no further than the measured outline allows (from above at an angle, a lobe further back shows higher up). `tree(..., lobes=..., view=VIEW)` does it for you. Don't fill an outline with a flat layer of voxels facing the camera, or copy lobes along the line of sight: the front score goes up a little, but the tree turns into a tilted board seen from anywhere else.
+- `crown_depth(lobes, x, y, VIEW)`: lobes read off a picture all lie in one plane, the vertical plane through the trunk at `(x, y)` that faces the camera, so the crown is right from the front and flat from the side. This fits each cluster of touching lobes with an upright ellipsoid that has the measured outline from `VIEW` (round seen from above when the outline allows it) and adds copies of each lobe along its line of sight inside it, so the outline from the reference's side stays exactly the same. `tree(..., lobes=..., view=VIEW)` does it for you. Don't fill an outline with a flat layer of voxels facing the camera, or copy lobes along the line of sight: the front score goes up a little, but the tree turns into a tilted board seen from anywhere else.
 - `carve_to_reference(REFERENCE, VIEW, only=leaves)`: cuts the voxels that land on the reference's background, which tidies an organic outline that lobes only approximate. It scales the model's outline to the reference's height first, so get the proportions right before using it, and limit it with `only` so trunks and bases stay intact.
 
 On a sheet of five tall trees, keeping the same lobe and trunk measurements and only replacing the hand-written clump code with these tools gave:
@@ -99,7 +100,7 @@ On a sheet of five tall trees, keeping the same lobe and trunk measurements and 
 | … + `carve_to_reference(only=leaves)` | 0.869 | 14.5 |
 | … + `paint_reference` | 0.869 | 10.7 |
 
-On a sheet of five spreading trees, the script Claude wrote first filled the outline with a voxel layer in the trunk's plane and copied lobes along the line of sight. It scored IoU 0.914 from the front, but every crown was a tilted slab from the side. Rebuilt from the same measurements with `crown_depth`, `foliage` and `tube`, the crowns are round from every side, at IoU 0.842 from the front. The score only looks from one direction, so check the side and back views in `_sheet.png` or with `voxtool angles`.
+On a sheet of five spreading trees, the script Claude wrote first filled the outline with a voxel layer in the trunk's plane and copied lobes along the line of sight. It scored IoU 0.914 from the front, but every crown was a tilted slab from the side. Rebuilt from the same measurements with `crown_depth`, `foliage` and `tube`, the crowns are round from every side, at IoU 0.842 from the front. The score only looks from one direction, so check the side and back views in `_turn.png` and the `depth:` line of every build: a crown like that one is marked `(thin)`.
 
 When the reference is itself voxel art, match its grain: one reference cube should be one voxel. On the same trees, `--res 2` made the leaves finer than the picture's and scored lower (IoU 0.855, ΔE 13.3).
 
@@ -139,6 +140,8 @@ All methods live on `Model` ([voxtool/model.py](../voxtool/model.py)). `c` is a 
 | | `crown_depth(lobes, x, y, view, fill=1.0)` | Spread lobes measured on a picture through the crown's depth |
 | | `tree(x, y, z, height, leaves, bark, style="round", width=None, lobes=None, view=None, ...)` | Whole tree; styles `round`, `column`, `cone`, `tiered`, `branched`, `spread`; `view` with measured `lobes` |
 | Reference fit | `carve_to_reference(reference, view, only=None, margin=0.5, cutout=None)` | Cut voxels that land on the reference's background |
+| Loose pieces | `loose_pieces()` / `remove_loose(max_voxels=8)` | Pieces touching nothing else of their object (what the build's `loose:` line lists) / delete those of at most `max_voxels` design voxels (`None`: all). Call before `paint_reference` |
+| Damage | `damage(level=1.0, seed=0, debris=0.35, scorch=True)` | Broken variant of the model: chipped edges, holes, cracks, a caved-in top at level 3; cut-off pieces fall as rubble |
 | Reference colours | `paint_reference(reference, view, colors=96, tol=30, only=None, blend=1.0, cutout=None)` | Paint the voxels the reference shows with its own pixels (call last); new colours are named `<colour>_r1`, … |
 | Model | `Model(w, d, h, seed=0, res=1)` | Grid in design units; `res` voxels per unit (`m.res`, `m.dims`; `m.size` is the voxel grid) |
 | Objects & files | `with m.part(name): ...` | Voxels drawn inside become a separate object in the `.vox` (kit sheets) |

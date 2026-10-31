@@ -153,8 +153,8 @@ def _render_scale(v: np.ndarray) -> float:
 
 
 def score_model(v, palette, emissive, ref_path: str, view: dict, *, cutout_kw: dict | None = None,
-                cache_dir: str | None = None):
-    """Returns (metrics dict, diff image)."""
+                cache_dir: str | None = None, label: str = ""):
+    """Returns (metrics dict, diff image); `label` starts the image's title (e.g. which reference)."""
     ref = reference_cutout(ref_path, cache_dir, **(cutout_kw or {}))
     ref_rgb, ref_mask = _fit_height(ref, WORK_H)
     ren = render_iso(v, palette, azimuth=view.get("azimuth", 30), elevation=view.get("elevation", 30),
@@ -164,9 +164,21 @@ def score_model(v, palette, emissive, ref_path: str, view: dict, *, cutout_kw: d
     met = measure(ref_rgb, ref_mask, ren_rgb, ren_mask)
     de_map = met.pop("_de_map")
     met["view"] = {k: view.get(k, d) for k, d in (("azimuth", 30), ("elevation", 30), ("fov", 0))}
-    title = (f"IoU {met['iou']:.3f}   ΔE {met['delta_e']:.1f}   "
-             f"(az {met['view']['azimuth']:g}° el {met['view']['elevation']:g}° fov {met['view']['fov']:g}°)")
+    title = (f"{label}   " if label else "") + (
+        f"IoU {met['iou']:.3f}   ΔE {met['delta_e']:.1f}   "
+        f"(az {met['view']['azimuth']:g}° el {met['view']['elevation']:g}° fov {met['view']['fov']:g}°)")
     return met, diff_image(ref_rgb, ref_mask, ren_rgb, ren_mask, de_map, title)
+
+
+def stack(images: list[Image.Image], gap: int = 10) -> Image.Image:
+    """Images one under the other (one score row per reference)."""
+    W = max(im.width for im in images)
+    out = Image.new("RGB", (W, sum(im.height for im in images) + gap * (len(images) - 1)), (245, 245, 245))
+    y = 0
+    for im in images:
+        out.paste(im, (0, y))
+        y += im.height + gap
+    return out
 
 
 # ---------------------------------------------------------------- the model laid over the full-size reference
@@ -310,6 +322,8 @@ def summary_line(met: dict) -> str:
 
 def append_history(path: str, met: dict):
     rec = {"t": time.time(), **{k: met[k] for k in ("iou", "delta_e", "view")}}
+    if met.get("views"):
+        rec["views"] = [{k: vm[k] for k in ("reference", "iou", "delta_e")} for vm in met["views"]]
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec) + "\n")
 

@@ -33,6 +33,7 @@ def test_prompts_name_the_model_command_and_limit(lang):
     r = jobs.refine_prompt("hut", "reference/hut.png", "make it red", lang)
     for p in (g, r):
         assert "models/hut.py" in p and f"{vt} build" in p and "{" not in p
+        assert "hut_turn.png" in p and "loose:" in p and "(thin)" in p      # the checks the score can't see
     assert "5" in g and "make it red" in r
 
 

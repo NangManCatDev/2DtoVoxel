@@ -2,13 +2,25 @@
 
 ## Unreleased
 
+### What the score can't see
+- The score looks from one direction only, so a flat board or a floating roof can score well. Every build now also writes `_turn.png` (the model from four sides) and prints `depth:` (front-to-back depth ÷ width per object, `(thin)` under 0.5) and `loose:` (pieces touching nothing else of their object, with size and position). `m.loose_pieces()` lists them and `m.remove_loose()` deletes specks.
+- `EXTRA_REFERENCES`: more pictures of the same object, each with its camera. Every build scores each one (its own `score <file>:` line and row in `_score.png`, plus the mean over all views), `score` puts them under `views`, and `fit-camera --ref N` finds the camera for picture N. `carve` lists its side and top drawings there itself.
+- After the score, a build writes a full-resolution close-up of the area with the largest difference (`_zoom_<region>.png`). The model page has **Close-up** and **All sides** tabs.
+- UI job prompts and the `/voxelize` skill tell Claude to check `_turn.png`, `(thin)` and `loose:`, and how to use more pictures.
+
 ### UI
 - Delete a model from the sidebar: a bin icon on each model opens a confirmation that lists what will be moved and warns about other models that use it, MagicaVoxel edits and running jobs. Deleted models go to `output/_trash/<name>_<time>/` instead of being erased.
+- **Trash** page: restore a deleted model (refused if the name is taken again) or delete it forever.
+- New jobs preselect Opus. With "Default", a job stops right away if Claude Code's current model turns out to be Haiku, whose scripts were unusable.
+- Cancelling a job and restoring a build use the page's own confirmation dialog.
+
+### Models
+- `m.damage(level)`: a broken variant of the model (chipped edges, holes, cracks, a caved-in top at level 3); pieces that lose their hold fall as rubble.
 
 ### Plants
 - `m.tube()`: curved, tapering limbs with bark streaks. `m.foliage()`: voxel-art crowns made of clusters of small leaf clumps with a dark core, shaded light on top and outside. `m.tree()`: a whole tree (trunk, roots, limbs, crown) from your own lobes or a style (`round`, `column`, `cone`, `tiered`, `branched`, `spread`).
 - `m.carve_to_reference()`: cuts voxels that land on the reference's background, to tidy organic outlines.
-- `m.crown_depth()` (and `tree(lobes=..., view=VIEW)`): spreads lobes measured on a picture through the crown's depth, so crowns are round from every side instead of flat boards; the skill forbids filling an outline with a flat voxel layer and asks for a side/back check of organic models.
+- `m.crown_depth()` (and `tree(lobes=..., view=VIEW)`): spreads lobes measured on a picture through the crown's depth, so crowns are round from every side instead of flat boards; the skill forbids filling an outline with a flat voxel layer and asks for a side/back check of organic models. Each cluster of touching lobes gets an upright ellipsoid with the measured outline, and lobes are copied along their own line of sight inside it, so the outline from the reference's side doesn't change.
 - On a sheet of five tall trees (same measurements, only the leaf code replaced): IoU 0.847 → 0.869, ΔE 15.2 → 10.7 with `paint_reference`.
 - The `/voxelize` skill tells Claude to use these for plants and to match a voxel-art reference's grain.
 

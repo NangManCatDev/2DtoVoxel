@@ -78,6 +78,7 @@ This job was started automatically by the 2DtoVoxel web UI. You cannot ask the u
 - The shell (Bash or PowerShell) allows only `{vt} build|angles|score|fit-camera models/{name}.py ...`, `{vt} ref|render|compare ...` and `ls ...` (no `-c` code, no other scripts, no cd or && chaining).
 - Never build another model: that would overwrite its .vox, which may contain the user's hand edits.
 - Each build prints `score: iou=… dE=… worst: …` (silhouette overlap with the reference, colour difference, worst regions) and writes output/{name}/{name}_score.png (red = missing, blue = extra). Use the numbers together with the images; stop iterating when the score stops improving for two builds in a row.{limit}
+- Each build also writes output/{name}/{name}_turn.png (the model from four sides) and prints `depth:` (front-to-back depth ÷ width of each object) and, when there are any, `loose:` (pieces touching nothing else of their object). The score only looks from the reference's side, so a model can score well and still be a flat board or have floating bits: when `(thin)` or `loose:` shows up, look at _turn.png and fix it, unless the object really is flat or floating (a sign, a wall panel, sparks). If the script has EXTRA_REFERENCES, each of those pictures gets its own `score <file>:` line, and they all count.
 - Put any temporary files in output/_scratch/.
 - Do not open MagicaVoxel (--open) or take screenshots (shot); the UI handles that.
 - Finish with a short reply in English: what you built or changed, the final score, and how it differs from the reference.""",
@@ -93,7 +94,7 @@ Modify the existing model models/{name}.py as requested below. ({ref})
 Request: {notes}
 
 Steps: read and edit the script → `{vt} build models/{name}.py` → check output/{name}/{name}_compare.png,
-_score.png and _sheet.png with Read → repeat until the request is met. Leave unrelated parts unchanged.""",
+_score.png, _sheet.png and _turn.png with Read → repeat until the request is met. Leave unrelated parts unchanged.""",
         "ref": "Reference: {reference}",
         "no_ref": "no reference",
     },
@@ -105,6 +106,7 @@ _score.png and _sheet.png with Read → repeat until the request is met. Leave u
 - 셸(Bash 또는 PowerShell)은 `{vt} build|angles|score|fit-camera models/{name}.py ...`, `{vt} ref|render|compare ...`, `ls ...`만 허용된다(`-c` 코드, 다른 스크립트, cd, && 연결 불가).
 - 다른 모델은 절대 빌드하지 마. 그 모델의 .vox(사용자가 손으로 고친 내용이 있을 수 있음)를 덮어쓴다.
 - 빌드할 때마다 `score: iou=… dE=… worst: …`(레퍼런스와의 실루엣 겹침, 색 차이, 가장 어긋난 영역)가 출력되고 output/{name}/{name}_score.png(빨강=빠짐, 파랑=넘침)가 만들어진다. 숫자와 이미지를 함께 보고 고치고, 점수가 두 번 연속 오르지 않으면 반복을 멈춰라.{limit}
+- 빌드는 output/{name}/{name}_turn.png(모델을 네 방향에서 본 모습)도 만들고, `depth:`(물체마다 앞뒤 깊이 ÷ 너비)와, 있을 때만 `loose:`(자기 물체의 나머지와 닿지 않은 덩어리)를 출력한다. 점수는 레퍼런스 방향에서만 재므로 점수가 높아도 납작한 판이거나 떠 있는 조각이 있을 수 있다. `(thin)`이나 `loose:`가 나오면 _turn.png를 보고 고쳐라. 정말 납작하거나 떠 있어야 하는 물체(간판, 벽 패널, 불꽃)는 예외다. 스크립트에 EXTRA_REFERENCES가 있으면 그림마다 `score <파일>:` 줄이 따로 나오고, 모두 맞춰야 한다.
 - 임시 파일이 필요하면 output/_scratch/ 에 둔다.
 - MagicaVoxel 열기(--open)와 화면 캡처(shot)는 하지 않는다. UI가 따로 처리한다.
 - 마지막 답변은 한국어로 짧게: 무엇을 만들었/바꿨는지, 최종 점수, 레퍼런스와 다른 점.""",
@@ -120,7 +122,7 @@ _score.png and _sheet.png with Read → repeat until the request is met. Leave u
 요청: {notes}
 
 절차: 스크립트를 읽고 수정 → `{vt} build models/{name}.py` → output/{name}/{name}_compare.png, _score.png,
-_sheet.png 를 Read로 확인 → 요청이 반영될 때까지 반복. 요청과 무관한 부분은 바꾸지 마.""",
+_sheet.png, _turn.png 를 Read로 확인 → 요청이 반영될 때까지 반복. 요청과 무관한 부분은 바꾸지 마.""",
         "ref": "레퍼런스: {reference}",
         "no_ref": "레퍼런스 없음",
     },

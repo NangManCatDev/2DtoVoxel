@@ -32,6 +32,7 @@ Turning concept art into voxels by hand means hours of placing blocks and eyebal
 ## Features
 
 - **Measured against your image.** Every build gets a score (silhouette overlap and colour difference) and a map of what's missing and what's extra, so you see progress instead of guessing.
+- **Checked from every side.** A score from one direction can't see the back, so each build also shows the model from four sides and flags objects that are flat from the side or have floating pieces. Have pictures of other sides too? Each one is scored as well.
 - **Editable, not baked.** The result is a `.vox` plus a short build script. Ask for changes in plain words ("make the awning bigger") or edit it yourself.
 - **Watch it work, rewind any time.** A live log shows every build with its score, and any earlier version is one click away.
 - **Same camera as the reference.** The camera angle and perspective are fitted automatically, so comparisons are like for like.
@@ -40,6 +41,23 @@ Turning concept art into voxels by hand means hours of placing blocks and eyebal
 - **Game-ready exports.** 8-direction sprite sheets with a manifest, GLB / OBJ / PLY meshes, and palette variants.
 - **Safe to leave running.** The UI stays on your computer, each job can only touch its own model, cost and build limits are per job, and files you edited in MagicaVoxel are backed up before a rebuild.
 - **Use it your way.** A web UI in English and Korean, `/voxelize` in Claude Code, or the `voxtool` command line. No API key: it uses your Claude Code login.
+
+## Gallery
+
+Models made with 2DtoVoxel from pictures in [`reference/`](reference/). Each row shows the reference, the build from the reference's camera, and the same build turned 90° and 180°: sides a single picture doesn't show, so Claude infers them. The four-side check above is there to catch them when they come out flat.
+
+![Six references next to their voxel builds, each also turned 90° and 180°](docs/images/gallery.jpg)
+
+| Row | Model | IoU | ΔE |
+|---|---|---|---|
+| 1 | Stone cottage | 0.973 | 10.3 |
+| 2 | Courthouse | 0.965 | 14.2 |
+| 3 | Bell tower with an annex | 0.966 | 10.6 |
+| 4 | Street lamp | 0.910 | 6.6 |
+| 5 | Five tall trees (one object each) | 0.911 | 10.3 |
+| 6 | Bench, barrel and two posts (one object each) | 0.947 | 9.6 |
+
+Scores are measured from the reference's side. When you have pictures of other sides, list them in `EXTRA_REFERENCES` and those sides are measured too ([model scripts](docs/model-scripts.md#what-a-script-contains)).
 
 ## When to use
 

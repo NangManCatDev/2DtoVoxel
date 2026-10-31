@@ -1,9 +1,9 @@
 """CLI. Run from the project (workspace) folder; `py -m voxtool` on Windows, `python3 -m voxtool`
 elsewhere, or `voxtool` after `pip install -e .`.
 
-  build models/<name>.py [--open] [--no-score]    script -> output/<name>/ (.vox, previews, score)
-  score models/<name>.py                          measured match with REFERENCE (IoU, colour ΔE)
-  fit-camera models/<name>.py [--fovs 0,25,45]    camera (VIEW) whose silhouette best fits REFERENCE
+  build models/<name>.py [--open] [--no-score]    script -> output/<name>/ (.vox, previews, checks, score)
+  score models/<name>.py                          measured match with REFERENCE (+ EXTRA_REFERENCES)
+  fit-camera models/<name>.py [--fovs 0,25,45] [--ref N]    camera whose silhouette best fits a reference
   angles models/<name>.py 30,20 42,15[,30] ...    renders az,el[,fov] next to the reference
   render <file.vox> [--az --el --fov]             preview sheet for any .vox
   open <file.vox> / shot                          open in MagicaVoxel / capture its window (Windows)
@@ -154,19 +154,120 @@ def _out_dir(name: str, *sub: str) -> str:
 
 # ---------------------------------------------------------------- build / score / camera
 
+def extra_references(mod) -> list[tuple[str, dict, dict | None]]:
+    """EXTRA_REFERENCES as (path, view, cutout settings): more pictures of the same object, each
+    with the camera it shows the object from, e.g. ("reference/x_side.png", {"azimuth": 90,
+    "elevation": 0}). A third item overrides CUTOUT for that picture."""
+    out = []
+    for i, e in enumerate(getattr(mod, "EXTRA_REFERENCES", None) or []):
+        if not isinstance(e, (tuple, list)) or len(e) not in (2, 3) or not isinstance(e[1], dict):
+            raise RuntimeError(f"EXTRA_REFERENCES[{i}] must be (image path, view dict) or "
+                               f"(image path, view dict, cutout dict), not {e!r}")
+        view = {"azimuth": 30.0, "elevation": 30.0, "fov": 0.0}
+        view.update(e[1])
+        out.append((e[0], view, e[2] if len(e) == 3 else getattr(mod, "CUTOUT", None)))
+    return out
+
+
 def _score(mod, name, m, out_dir, emissive, *, quiet=False):
-    from .score import append_history, score_model, summary_line
+    """Scores REFERENCE and every EXTRA_REFERENCES picture; one row each in _score.png. The
+    returned metrics are REFERENCE's, with the others under "views"."""
+    from .score import append_history, score_model, stack, summary_line
     ref = getattr(mod, "REFERENCE", None)
     if not ref or not os.path.isfile(os.path.join(ROOT, ref)):
         return None
+    extras = extra_references(mod)
+    label = os.path.basename(ref) if extras else ""
     met, img = score_model(m.v, m.pal.rgba, emissive, os.path.join(ROOT, ref), script_view(mod, "SCORE_VIEW"),
-                           cutout_kw=getattr(mod, "CUTOUT", None), cache_dir=REF_CACHE)
-    img.save(os.path.join(out_dir, f"{name}_score.png"))
+                           cutout_kw=getattr(mod, "CUTOUT", None), cache_dir=REF_CACHE, label=label)
+    imgs, views = [img], []
+    for path, view, cut in extras:
+        if not os.path.isfile(os.path.join(ROOT, path)):
+            print(f"note: EXTRA_REFERENCES image {path} not found, not scored")
+            continue
+        vm, vimg = score_model(m.v, m.pal.rgba, emissive, os.path.join(ROOT, path), view, cutout_kw=cut,
+                               cache_dir=REF_CACHE, label=os.path.basename(path))
+        views.append({"reference": path, **{k: vm[k] for k in ("iou", "delta_e", "view", "regions")}})
+        imgs.append(vimg)
+    if views:
+        met["views"] = views
+    stack(imgs).save(os.path.join(out_dir, f"{name}_score.png"))
     append_history(os.path.join(out_dir, f"{name}_scores.jsonl"), met)
     if not quiet:
         print(f"score: {summary_line(met)}")
+        for vm in views:
+            print(f"score {os.path.basename(vm['reference'])}: {summary_line(vm)}")
+        if views:
+            every = [met, *views]
+            print(f"score all {len(every)} views: iou={np.mean([x['iou'] for x in every]):.3f} "
+                  f"dE={np.mean([x['delta_e'] for x in every]):.1f} (mean)")
         print(f"score    -> {os.path.join(out_dir, name + '_score.png')}")
     return met
+
+
+def _turnaround(m, name, out_dir, view, emissive) -> str:
+    """The model from four sides, a quarter turn apart, starting at the reference's side: the
+    score only looks from that one direction, so a crown that is a flat board shows up here."""
+    az = float(view.get("azimuth", 30))
+    el = min(max(float(view.get("elevation", 30)), 15.0), 35.0)
+    labels = ["as the reference", "+90°", "back", "+270°"]
+    ims = [render_iso(m.v, m.pal.rgba, azimuth=az + 90 * k, elevation=el, scale=6, emissive=emissive, max_px=700)
+           for k in range(4)]
+    path = os.path.join(out_dir, f"{name}_turn.png")
+    side_by_side(ims, height=360, labels=labels).save(path)
+    return path
+
+
+def depth_report(m, view) -> tuple[str, bool]:
+    """How deep each object is front to back compared with its width, seen from `view`: the
+    median over horizontal slices of (depth / width), so a crown that is a flat or tilted board
+    scores low even if it spans some depth as a whole (1 = as deep as wide, like a round crown).
+    Returns (text, any object thin)."""
+    a = np.radians(float(view.get("azimuth", 30)))
+    right, back = np.array([np.cos(a), -np.sin(a)]), np.array([np.sin(a), np.cos(a)])
+    groups = m._part_masks() if m.part_names else [("model", m.v > 0)]
+    band = 2 * m.res
+    parts, thin = [], False
+    for part, mask in groups:
+        xs, ys, zs = np.nonzero(mask)
+        if len(xs) < 50:
+            continue
+        xy = np.stack([xs, ys], 1).astype(np.float32)
+        u, s = xy @ right, xy @ back
+        ratios, weights = [], []
+        for zb in np.unique(zs // band):
+            sel = zs // band == zb
+            if sel.sum() < 20:
+                continue
+            width = np.percentile(u[sel], 98) - np.percentile(u[sel], 2) + m.res
+            if width < 6 * m.res:
+                continue                       # trunks and posts: too narrow to tell
+            ratios.append((np.percentile(s[sel], 98) - np.percentile(s[sel], 2) + m.res) / width)
+            weights.append(sel.sum())
+        if not ratios:
+            continue
+        order = np.argsort(ratios)
+        cum = np.cumsum(np.array(weights)[order])
+        ratio = float(np.array(ratios)[order][np.searchsorted(cum, cum[-1] / 2)])
+        flag = ratio < 0.5
+        thin |= flag
+        parts.append(f"{part} {ratio:.2f}{' (thin)' if flag else ''}" if m.part_names else
+                     f"{ratio:.2f}{' (thin)' if flag else ''}")
+    return ", ".join(parts), thin
+
+
+def loose_report(m) -> str:
+    """Pieces that touch nothing else of their object (Model.loose_pieces), biggest first;
+    '' when every object is in one piece."""
+    pieces = m.loose_pieces()
+    if not pieces:
+        return ""
+    n, total = len(pieces), sum(p["voxels"] for p in pieces)
+    where = ", ".join(f"{p['part'] + ' ' if m.part_names else ''}{p['voxels']} at "
+                      f"({', '.join(f'{q:g}' for q in p['at'])})" for p in pieces[:3])
+    more = f", +{n - 3} more" if n > 3 else ""
+    return (f"{n} piece{'s' if n > 1 else ''}, {total} voxel{'s' if total > 1 else ''} "
+            f"(size at centre: {where}{more})")
 
 
 def cmd_build(a):
@@ -197,6 +298,15 @@ def cmd_build(a):
     iso.save(os.path.join(out_dir, f"{name}_iso.png"))
     print(f"preview  -> {os.path.join(out_dir, name + '_sheet.png')}")
     print(f"iso      -> {os.path.join(out_dir, name + '_iso.png')}")
+    print(f"turn     -> {_turnaround(m, name, out_dir, view, emissive)}")
+    depth, thin = depth_report(m, view)
+    if depth:
+        print(f"depth: {depth}" + ("  <- front-to-back depth / width; flat seen from the side? check _turn.png"
+                                   if thin else ""))
+    loose = loose_report(m)
+    if loose:
+        print(f"loose: {loose}  <- not touching the rest of their object (design units); floating on purpose? "
+              f"if not, connect them or call m.remove_loose(); a separate prop belongs in its own m.part()")
 
     ref = getattr(mod, "REFERENCE", None)
     if ref and os.path.isfile(os.path.join(ROOT, ref)):
@@ -204,9 +314,29 @@ def cmd_build(a):
         side_by_side([os.path.join(ROOT, ref), iso], labels=["reference", "voxel build"]).save(cmp_path)
         print(f"compare  -> {cmp_path}")
         if not a.no_score:
-            _score(mod, name, m, out_dir, emissive)
+            met = _score(mod, name, m, out_dir, emissive)
+            _auto_zoom(mod, name, m, out_dir, emissive, met)
     if a.open:
         open_in_magicavoxel(vox)
+
+
+def _auto_zoom(mod, name, m, out_dir, emissive, met):
+    """Close-up of the region with the most missing + extra shape (when it's worth a look)."""
+    if not met:
+        return
+    worst = max(met["regions"], key=lambda r: r["missing"] + r["extra"])
+    if worst["missing"] + worst["extra"] < 0.08:
+        return
+    from .score import zoom_image
+    try:
+        _, img = zoom_image(m.v, m.pal.rgba, emissive, os.path.join(ROOT, mod.REFERENCE),
+                            script_view(mod, "SCORE_VIEW"), worst["region"],
+                            cutout_kw=getattr(mod, "CUTOUT", None), cache_dir=REF_CACHE)
+    except ValueError:
+        return
+    path = os.path.join(out_dir, f"{name}_zoom_{worst['region']}.png")
+    img.save(path)
+    print(f"zoom     -> {path}  ({worst['region']}, the largest difference)")
 
 
 def cmd_score(a):
@@ -229,30 +359,35 @@ def cmd_score(a):
     met = _score(mod, name, m, _out_dir(name), emissive)
     if met is None:
         raise RuntimeError("the script has no REFERENCE image to score against")
-    print(json.dumps({k: met[k] for k in ("iou", "delta_e", "view", "regions")}, ensure_ascii=False))
+    print(json.dumps({k: met[k] for k in ("iou", "delta_e", "view", "regions", "views") if k in met},
+                     ensure_ascii=False))
 
 
 def cmd_fit_camera(a):
     from .score import fit_camera, score_model, summary_line
     mod = load_script(a.script)
     name = getattr(mod, "NAME", _stem(a.script))
-    ref = getattr(mod, "REFERENCE", None)
+    refs = [(getattr(mod, "REFERENCE", None), getattr(mod, "CUTOUT", None))]
+    refs += [(path, cut) for path, _, cut in extra_references(mod)]
+    if not 0 <= a.ref < len(refs):
+        raise RuntimeError(f"--ref {a.ref}: the script has REFERENCE (0) and {len(refs) - 1} EXTRA_REFERENCES")
+    ref, cut = refs[a.ref]
     if not ref or not os.path.isfile(os.path.join(ROOT, ref)):
-        raise RuntimeError("the script has no REFERENCE image")
+        raise RuntimeError("the script has no REFERENCE image" if a.ref == 0 else f"{ref} not found")
     m = mod.build()
     emissive = {i for i in m.pal.materials if m.pal.is_emissive(i)}
     fovs = [float(f) for f in a.fovs.split(",")]
-    best = fit_camera(m.v, os.path.join(ROOT, ref), fovs=fovs, cutout_kw=getattr(mod, "CUTOUT", None),
-                      cache_dir=REF_CACHE)
+    best = fit_camera(m.v, os.path.join(ROOT, ref), fovs=fovs, cutout_kw=cut, cache_dir=REF_CACHE)
     for b in best:
         print(f"  az={b['azimuth']:g} el={b['elevation']:g} fov={b['fov']:g}  silhouette≈{b['iou']:.3f}")
     view = {k: best[0][k] for k in ("azimuth", "elevation", "fov")}
-    met, img = score_model(m.v, m.pal.rgba, emissive, os.path.join(ROOT, ref), view,
-                           cutout_kw=getattr(mod, "CUTOUT", None), cache_dir=REF_CACHE)
-    out = os.path.join(_out_dir(name), f"{name}_fit.png")
+    met, img = score_model(m.v, m.pal.rgba, emissive, os.path.join(ROOT, ref), view, cutout_kw=cut,
+                           cache_dir=REF_CACHE)
+    out = os.path.join(_out_dir(name), f"{name}_fit.png" if a.ref == 0 else f"{name}_fit_ref{a.ref}.png")
     img.save(out)
     print(f"best: {summary_line(met)}")
-    print(f'VIEW = {{"azimuth": {view["azimuth"]:g}, "elevation": {view["elevation"]:g}, "fov": {view["fov"]:g}}}')
+    found = f'{{"azimuth": {view["azimuth"]:g}, "elevation": {view["elevation"]:g}, "fov": {view["fov"]:g}}}'
+    print(f"VIEW = {found}" if a.ref == 0 else f'EXTRA_REFERENCES[{a.ref - 1}]: ("{ref}", {found})')
     print(f"fit      -> {out}")
 
 
@@ -323,7 +458,7 @@ def cmd_ref(a):
 
 # ---------------------------------------------------------------- conversions (no Claude)
 
-def _write_base(name: str, m, reference: str, how: str, score_view: dict | None):
+def _write_base(name: str, m, reference: str, how: str, score_view: dict | None, extra_refs: list | None = None):
     from .convert import base_script
     os.makedirs(os.path.join(ROOT, "models"), exist_ok=True)
     base = f"models/{name}.base.vox"
@@ -333,7 +468,8 @@ def _write_base(name: str, m, reference: str, how: str, score_view: dict | None)
         print(f"kept existing {script} (it loads {base})")
     else:
         with open(script, "w", encoding="utf-8") as f:
-            f.write(base_script(name, base, reference.replace("\\", "/"), how, score_view=score_view))
+            f.write(base_script(name, base, reference.replace("\\", "/"), how, score_view=score_view,
+                                extra_refs=extra_refs))
         print(f"script   -> {script}")
     print(f"base     -> {base}  ({int((m.v > 0).sum())} voxels, grid {m.v.shape})")
     cmd_build(argparse.Namespace(script=script, az=None, el=None, scale=8, no_score=False, open=False))
@@ -352,7 +488,12 @@ def cmd_carve(a):
     m = carve(a.front, a.side, a.top, height=a.height, side_from=a.side_from, cutout_kw={"keep": a.keep})
     how = "carve" + "".join(f" --{k} {os.path.basename(v)}" for k, v in (("front", a.front), ("side", a.side),
                                                                        ("top", a.top)) if v)
-    _write_base(a.name, m, os.path.relpath(a.front, ROOT), how, {"azimuth": 0, "elevation": 0, "fov": 0})
+    # the cameras carve() assumed: a left view looks at the -X face (az 90), a right view at +X
+    extra = [(os.path.relpath(a.side, ROOT).replace("\\", "/"),
+              {"azimuth": 90 if a.side_from == "left" else 270, "elevation": 0, "fov": 0})] if a.side else []
+    if a.top:
+        extra.append((os.path.relpath(a.top, ROOT).replace("\\", "/"), {"azimuth": 0, "elevation": 90, "fov": 0}))
+    _write_base(a.name, m, os.path.relpath(a.front, ROOT), how, {"azimuth": 0, "elevation": 0, "fov": 0}, extra)
 
 
 # ---------------------------------------------------------------- game-asset outputs
@@ -445,7 +586,7 @@ def main(argv=None):
     b.add_argument("--res", type=int, help="override the script's RES (voxels per design unit)")
     b.set_defaults(fn=cmd_build)
 
-    s = sub.add_parser("score", help="measure the match with REFERENCE")
+    s = sub.add_parser("score", help="measure the match with REFERENCE (and EXTRA_REFERENCES)")
     s.add_argument("script")
     s.add_argument("--res", type=int, help="override the script's RES (voxels per design unit)")
     s.add_argument("--zoom", help="close-up at full reference resolution: a region (top-left, top, ... "
@@ -455,6 +596,8 @@ def main(argv=None):
     fc = sub.add_parser("fit-camera", help="find the VIEW that best matches REFERENCE")
     fc.add_argument("script")
     fc.add_argument("--fovs", default="0,25,45", help="fields of view to try; 0 = orthographic")
+    fc.add_argument("--ref", type=int, default=0, help="which picture: 0 = REFERENCE, 1 = the first of "
+                                                       "EXTRA_REFERENCES, ...")
     fc.set_defaults(fn=cmd_fit_camera)
 
     an = sub.add_parser("angles", help="renders at several cameras next to the reference")

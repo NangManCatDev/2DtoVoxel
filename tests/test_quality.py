@@ -199,6 +199,23 @@ def test_carve_to_reference_cuts_what_the_reference_lacks(workspace, monkeypatch
     assert np.array_equal(m.v[hut] > 0, np.ones(int(hut.sum()), bool))   # `only` protects the rest
 
 
+def test_loose_pieces_per_object_and_remove_loose():
+    m = Model(20, 20, 20, res=2)
+    m.pal.add("a", "#888888")
+    m.box(2, 2, 0, 6, 6, 6, "a")                      # the body
+    m.set(8, 8, 6, "a")                               # touches the body's corner only: attached
+    m.box(2, 2, 8, 2, 2, 1, "a")                      # a slab hovering over it: 4 design voxels
+    m.set(15, 15, 15, "a")                            # a speck
+    with m.part("post"):
+        m.box(14, 2, 0, 2, 2, 5, "a")                 # its own object, not a loose piece of the body
+    pieces = m.loose_pieces()
+    assert [(p["part"], p["voxels"]) for p in pieces] == [("rest", 32), ("rest", 8)]
+    assert pieces[1]["at"] == (15.5, 15.5, 15.5)      # design units
+    assert m.remove_loose(max_voxels=1) == 8 and len(m.loose_pieces()) == 1
+    assert m.remove_loose(max_voxels=None) == 32 and m.loose_pieces() == []
+    assert (m.v > 0).sum() == (6 * 6 * 6 + 1 + 2 * 2 * 5) * 8
+
+
 def test_damage_breaks_the_model_without_leaving_anything_floating(workspace):
     from scipy import ndimage
     removed = []
@@ -212,6 +229,18 @@ def test_damage_breaks_the_model_without_leaving_anything_floating(workspace):
         assert "crack" in m.pal.names and "wall_burnt" in m.pal.names
         removed.append(info["removed"])
     assert removed[1] > removed[0] * 3
+
+
+def test_depth_report_flags_a_flat_board():
+    from voxtool.__main__ import depth_report
+    view = {"azimuth": 20, "elevation": 25}
+    board, cube = Model(30, 30, 30), Model(30, 30, 30)
+    for m in (board, cube):
+        m.pal.add("a", "#888888")
+    board.box(5, 14, 0, 20, 2, 20, "a")               # a crown filled in as a layer facing the camera
+    cube.box(5, 5, 0, 20, 20, 20, "a")
+    assert depth_report(board, view)[1] and "(thin)" in depth_report(board, view)[0]
+    assert not depth_report(cube, view)[1]
 
 
 def test_coarsen_keeps_the_top_colour_of_each_block():

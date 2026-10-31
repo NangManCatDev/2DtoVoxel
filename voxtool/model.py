@@ -727,6 +727,58 @@ class Model:
         self.v[tuple(cut.T)] = 0
         return len(cut)
 
+    # ------------------------------------------------------------ loose pieces
+
+    def _components(self):
+        """For every object (each part, or the whole model): (part name, low corner, component
+        labels over its bounding box, voxels per label, label of the biggest one = its body)."""
+        from scipy import ndimage
+        for part, mask in (self._part_masks() if self.part_names else [("model", self.v > 0)]):
+            xs, ys, zs = np.nonzero(mask)
+            if not len(xs):
+                continue
+            lo = np.array([xs.min(), ys.min(), zs.min()])
+            sl = tuple(slice(a, b + 1) for a, b in zip(lo, (xs.max(), ys.max(), zs.max())))
+            labels, n = ndimage.label(mask[sl], structure=np.ones((3, 3, 3), bool))   # edges/corners connect
+            sizes = np.bincount(labels.ravel(), minlength=n + 1)
+            sizes[0] = 0
+            yield part, lo, labels, sizes, int(sizes.argmax())
+
+    def loose_pieces(self) -> list[dict]:
+        """Groups of voxels that touch nothing else of their object (each part is its own
+        object; touching by an edge or a corner counts). The biggest group of an object is its
+        body and isn't listed. Specks left by carving, a crown that misses its trunk or a roof
+        hovering over its walls show up here - and so does anything meant to float (sparks, a
+        separate prop that belongs in its own part()). Returns [{"part", "voxels", "at"}],
+        biggest first; "at" is the piece's centre in design units."""
+        from scipy import ndimage
+        out = []
+        for part, lo, labels, sizes, body in self._components():
+            loose = [k for k in range(1, len(sizes)) if k != body]
+            if not loose:
+                continue
+            centres = ndimage.center_of_mass(labels > 0, labels, loose)
+            for k, c in zip(loose, centres):
+                at = (np.array(c) + lo + 0.5) / self.res
+                out.append({"part": part, "voxels": int(sizes[k]), "at": tuple(round(float(q), 1) for q in at)})
+        return sorted(out, key=lambda p: -p["voxels"])
+
+    def remove_loose(self, max_voxels: float | None = 8) -> int:
+        """Deletes loose pieces (see loose_pieces) of at most max_voxels design voxels (res³
+        voxels each, so the same call works at any res); None deletes every loose piece, which
+        also drops separate objects that aren't in their own part(). Call it after carving and
+        before paint_reference. Returns the number of voxels removed."""
+        removed = 0
+        for _, lo, labels, sizes, body in self._components():
+            small = np.ones(len(sizes), bool) if max_voxels is None else sizes <= max_voxels * self.res ** 3
+            small[[0, body]] = False
+            cut = small[labels]
+            if cut.any():
+                idx = np.argwhere(cut) + lo
+                self.v[tuple(idx.T)] = 0
+                removed += len(idx)
+        return removed
+
     # ------------------------------------------------------------ damage
 
     def damage(self, level: float = 1.0, *, seed: int = 0, debris: float = 0.35, scorch: bool = True) -> dict:

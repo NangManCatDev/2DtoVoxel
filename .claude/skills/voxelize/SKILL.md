@@ -28,7 +28,8 @@ description: >-
 | 그림을 정교한 복셀 모델로 | 아래 1~5단계 (스크립트 작성 + 점수 기반 반복) |
 | 더 세밀하게 / 고해상도로 | 기존 스크립트에 `RES` 적용 → 4단계 (`paint_reference`, `--res`, `--zoom`) |
 | 픽셀아트·아이콘을 바로 두께 있는 복셀로 | `VT extrude <img> --name N [--depth 4 --inflate]` → 필요하면 2단계부터 다듬기 |
-| 정면/측면/윗면 그림 여러 장 | `VT carve --front f --side s --top t --name N` → 다듬기 |
+| 정면/측면/윗면 실루엣 그림 | `VT carve --front f --side s --top t --name N` → 다듬기 (측면·윗면은 자동으로 `EXTRA_REFERENCES`) |
+| 같은 물체를 여러 방향에서 본 그림·렌더 여러 장 | 가장 잘 보이는 한 장을 `REFERENCE`, 나머지를 `EXTRA_REFERENCES`로 → 1~5단계 |
 | 기존 모델 수정 | 스크립트 수정 → `VT build models/N.py` → 3단계 반복 |
 | 게임 에셋 | `VT sprites models/N.py --dirs 8`, `VT export models/N.py --format glb\|obj\|ply`, `VT recolor ...` |
 
@@ -60,15 +61,27 @@ description: >-
   (수관이 비스듬히 기운 판이 된다). 정면 점수는 조금 오르지만 3D로 보면 망가진다.
 - 참고 예시: `models/player_house.py`.
 - 첫 빌드 뒤 `VT fit-camera models/<slug>.py`로 카메라를 맞추고 출력된 `VIEW = {...}`를 스크립트에 넣는다.
+- **같은 물체의 그림이 여러 장이면** 나머지는 그 그림을 본 카메라와 함께 `EXTRA_REFERENCES = [("reference/x_side.png",
+  {"azimuth": 90, "elevation": 0}), ...]`에 넣는다. 정사영 도면이면 정면 0, 왼쪽 90, 뒤 180, 오른쪽 270, 위에서 본 그림은
+  `"elevation": 90`. 렌더·사진처럼 각도를 모르면 `VT fit-camera models/<slug>.py --ref 1`(첫 번째 추가 그림)로 찾는다.
+  빌드가 그림마다 점수를 따로 낸다. 보이지 않던 면을 추측하지 않고 맞출 수 있으니 있으면 꼭 쓴다.
 
 ## 3. 반복 (보통 4~6회) — 점수와 이미지를 함께 본다
 1. `VT build models/<slug>.py` → 출력의 `score: iou=… dE=… worst: …` 를 읽는다.
    - iou = 레퍼런스와 실루엣 겹침(1이 완벽), dE = 색 차이(낮을수록 좋음), worst = 가장 어긋난 영역.
+   - `EXTRA_REFERENCES`가 있으면 그림마다 `score <파일>: …` 줄과 평균(`score all N views`)이 더 나온다. 모두 본다.
 2. `output/<slug>/<slug>_score.png`(빨강 = 빠짐, 파랑 = 넘침), `_compare.png`, `_sheet.png`를 Read로 본다.
 3. 우선순위대로 고친다: 카메라 → 전체 비율 → 실루엣(빨강/파랑 영역) → 색 → 디테일. 한 번에 고치고 다시 빌드.
 4. stats의 색별 개수로 빠진 요소 확인(0개면 버그).
-5. 점수는 레퍼런스 방향 하나만 잰다. `_sheet.png`의 뒤쪽 iso와 left/right/top 뷰도 매번 본다. 자연물(나무·덤불)은
-   마무리 전에 `VT angles models/<slug>.py <az+90>,20 <az+180>,20`으로 옆·뒤에서 둥근지 확인한다 — 평평하면 고친다.
+5. 점수는 레퍼런스 방향 하나만 잰다(추가 그림이 없으면). 그래서 빌드는 점수가 못 보는 것도 따로 알려 준다:
+   - `_turn.png` — 레퍼런스 방향부터 90°씩 돌린 네 장. 매번 본다.
+   - `depth: 0.85` — 물체마다 높이 구간별 (앞뒤 깊이 ÷ 너비)의 중앙값. `(thin)`(0.5 미만)이면 옆에서 보면 판이라는 뜻이다.
+     간판·울타리·벽 패널처럼 원래 얇은 물체가 아니면 고친다(나무 수관은 `crown_depth`).
+   - `loose: 2 pieces, …` — 자기 물체(part)의 나머지와 닿지 않은 덩어리와 그 위치(설계 단위). 줄기에서 떨어진 잎,
+     벽 위에 뜬 지붕, 깎다 남은 부스러기가 여기 걸린다. 이어 붙이거나, 부스러기면 `m.remove_loose()`(기본: 8칸 이하만,
+     `max_voxels=None`이면 전부)를 `paint_reference` 앞에서 부른다. 따로 떨어진 소품이면 `with m.part("이름"):`으로
+     자기 물체로 만든다. 불꽃·반딧불처럼 일부러 띄운 것은 그대로 둔다.
+   자연물(나무·덤불)은 마무리 전에 `VT angles models/<slug>.py <az+90>,20 <az+180>,20`으로도 옆·뒤에서 둥근지 확인한다.
 6. 세부는 320 px 점수로는 안 보인다. `VT score models/<slug>.py --zoom <worst 영역>`(예: `top-right`, 또는
    `ref grid`로 읽은 `x0,y0,x1,y1`)으로 그 영역을 레퍼런스 원래 해상도로 확대해 보고 고친다.
 

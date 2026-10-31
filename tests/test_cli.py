@@ -1,17 +1,56 @@
 """The voxtool command line, run in a temporary workspace."""
+import json
 import re
 import struct
 
-from conftest import make_sprite, run_voxtool
+from conftest import load_hut, make_silhouette, make_sprite, run_voxtool
 
 
 def test_build_writes_previews_and_scores(workspace):
     r = run_voxtool(workspace, "build", "models/hut.py")
     out = workspace / "output" / "hut"
-    for f in ("hut.vox", "hut_iso.png", "hut_sheet.png", "hut_compare.png", "hut_score.png", "hut_scores.jsonl"):
+    for f in ("hut.vox", "hut_iso.png", "hut_sheet.png", "hut_turn.png", "hut_compare.png", "hut_score.png",
+              "hut_scores.jsonl"):
         assert (out / f).exists(), f
     m = re.search(r"score: iou=([\d.]+) dE=([\d.]+)", r.stdout)
     assert m and float(m.group(1)) > 0.95
+    assert re.search(r"^depth: [\d.]+$", r.stdout, re.M) and "loose:" not in r.stdout   # deep, in one piece
+
+
+def test_extra_references_are_scored_and_fitted(workspace):
+    from voxtool.render import render_iso
+    m = load_hut(workspace)
+    render_iso(m.v, m.pal.rgba, azimuth=100, elevation=25, scale=6, outline=False).save(
+        workspace / "reference" / "hut_side.png")
+    script = workspace / "models" / "hut.py"
+    view = 'VIEW = {"azimuth": 30, "elevation": 25}'
+    script.write_text(script.read_text(encoding="utf-8").replace(view, view + (
+        '\nEXTRA_REFERENCES = [("reference/hut_side.png", {"azimuth": 100, "elevation": 25})]')), encoding="utf-8")
+    r = run_voxtool(workspace, "build", "models/hut.py")
+    side = re.search(r"^score hut_side\.png: iou=([\d.]+)", r.stdout, re.M)
+    assert side and float(side.group(1)) > 0.95 and "score all 2 views: iou=" in r.stdout
+    assert re.search(r"^score: iou=", r.stdout, re.M)                # REFERENCE's line, read by UI jobs
+    rec = json.loads((workspace / "output" / "hut" / "hut_scores.jsonl").read_text().splitlines()[-1])
+    assert rec["views"][0]["reference"] == "reference/hut_side.png"
+    met = json.loads(run_voxtool(workspace, "score", "models/hut.py").stdout.splitlines()[-1])
+    assert met["views"][0]["view"]["azimuth"] == 100
+    fit = run_voxtool(workspace, "fit-camera", "models/hut.py", "--ref", "1", "--fovs", "0").stdout
+    az = float(re.search(r'EXTRA_REFERENCES\[0\]: \("reference/hut_side.png", \{"azimuth": ([\d.]+)', fit).group(1))
+    assert abs((az - 100 + 180) % 360 - 180) <= 15
+    assert run_voxtool(workspace, "fit-camera", "models/hut.py", "--ref", "2", check=False).returncode != 0
+
+
+def test_carve_script_scores_every_drawing(workspace):
+    ref = workspace / "reference"
+    make_silhouette(ref / "f.png", "rect")
+    make_silhouette(ref / "s.png", "rect")
+    make_silhouette(ref / "t.png", "circle", (200, 200))
+    r = run_voxtool(workspace, "carve", "--front", "reference/f.png", "--side", "reference/s.png",
+                    "--top", "reference/t.png", "--name", "vase", "--height", "40")
+    script = (workspace / "models" / "vase.py").read_text(encoding="utf-8")
+    assert '("reference/s.png", {"azimuth": 90' in script and '("reference/t.png", {"azimuth": 0, "elevation": 90' in script
+    ious = [float(x) for x in re.findall(r"^score [st]\.png: iou=([\d.]+)", r.stdout, re.M)]
+    assert len(ious) == 2 and min(ious) > 0.9
 
 
 def test_rebuild_backs_up_a_file_saved_by_magicavoxel(workspace):

@@ -33,9 +33,10 @@ When a new reference comes in, follow the `/voxelize <image path>` skill (`.clau
   intersection).
 - `voxtool/export.py` — greedy meshing → OBJ/PLY/GLB, sprite sheet + manifest.json, palette variants.
 - `voxtool/__main__.py` — the whole CLI. `voxtool/ui/` — web UI (`voxtool ui`, `py -m ui`, `2DtoVoxel.bat`, `2dtovoxel.sh`).
-- `models/<name>.py` — one build script per model. `NAME`, `REFERENCE`, `VIEW` (+`fov`); optional `SCORE_VIEW`, `CUTOUT`.
+- `models/<name>.py` — one build script per model. `NAME`, `REFERENCE`, `VIEW` (+`fov`); optional `SCORE_VIEW`, `CUTOUT`,
+  `EXTRA_REFERENCES` (more pictures as `(path, view[, cutout])`, each scored too).
   Conversion results are `models/<name>.base.vox` (source data, committed) + a script that loads it.
-- `output/<name>/` — `.vox`, `_iso/_sheet/_compare/_score/_fit.png`, `_scores.jsonl`, `sprites/ export/ variants/`
+- `output/<name>/` — `.vox`, `_iso/_sheet/_turn/_compare/_score/_fit/_zoom_<area>.png`, `_scores.jsonl`, `sprites/ export/ variants/`
   (generated, can be rebuilt any time, git-ignored). `output/_jobs/<id>/` — UI job logs and per-build snapshots (`iter/`).
   `output/_trash/<slug>_<time>/` — models deleted in the UI (script, base .vox, output folder; moved, not erased).
 
@@ -71,7 +72,7 @@ and rebuilt another model, overwriting the user's MagicaVoxel edits.)
 ```
 VT build models/<name>.py [--open] [--no-score] [--res N]   # .vox + previews + score (if there is a REFERENCE)
 VT score models/<name>.py [--res N] [--zoom AREA]  # score only (JSON); --zoom: full-size close-up of one area
-VT fit-camera models/<name>.py [--fovs 0,25,45]    # prints the best-fitting VIEW + _fit.png
+VT fit-camera models/<name>.py [--fovs 0,25,45] [--ref N]   # best-fitting VIEW + _fit.png (N: EXTRA_REFERENCES)
 VT angles models/<name>.py 30,20 42,15,30          # several az,el[,fov] next to the reference
 VT render <file.vox> [--az --el --fov]             # preview for any .vox
 VT open <file.vox> / VT shot                       # open in MagicaVoxel / capture its window (Windows)
@@ -108,7 +109,11 @@ VT ui / VT install-skill
   voxel layer in the trunk's plane and copied lobes along the line of sight, so crowns were tilted slabs from the side
   (spreading trees: IoU 0.914 front, flat from every other angle). Lobes measured on a picture go through
   `crown_depth()` (or `tree(lobes=..., view=VIEW)`); with them the same trees are round from every side at IoU 0.842.
-  Check `_sheet.png`'s back/side views or `angles` at az+90/az+180 for organic models.
+- So `build` also reports what one view can't see: `_turn.png` (four sides), `depth:` per object (median depth ÷ width
+  over horizontal slices; `(thin)` under 0.5, which those slab crowns get) and `loose:` (pieces touching nothing else
+  of their object, 26-connected, per part; `m.remove_loose()` deletes specks). Both are hints: signs, fences and
+  sparks are thin or loose on purpose. With more than one picture of the object, list the others in
+  `EXTRA_REFERENCES` so their sides are measured instead of guessed (`carve` does it for its side/top drawings).
 - `carve_to_reference` aligns by outline height + bbox centre: aligning by area (like the score) made each cut rescale
   the model and cut again (IoU 0.84 → 0.49). With voxel-art references, match the picture's grain instead of raising
   `RES` (the tall-trees sheet scored lower at res 2).

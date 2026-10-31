@@ -10,6 +10,8 @@ of a model script (Model.from_vox) that Claude or you then refine with the DSL.
 """
 from __future__ import annotations
 
+import json
+
 import numpy as np
 from PIL import Image
 
@@ -151,9 +153,14 @@ def carve(front: str, side: str | None = None, top: str | None = None, *, height
     return _model_from(grid, hull)
 
 
-def base_script(name: str, base_vox: str, reference: str, how: str, *, score_view: dict | None = None) -> str:
-    """Model script that starts from a converted base and is ready for DSL details."""
+def base_script(name: str, base_vox: str, reference: str, how: str, *, score_view: dict | None = None,
+                extra_refs: list | None = None) -> str:
+    """Model script that starts from a converted base and is ready for DSL details.
+    extra_refs: (image, view) pairs of the other drawings, scored as EXTRA_REFERENCES."""
     sv = f"\nSCORE_VIEW = {score_view!r}   # camera the reference was drawn from" if score_view else ""
+    if extra_refs:
+        rows = "".join(f"\n    ({json.dumps(path, ensure_ascii=False)}, {json.dumps(view)})," for path, view in extra_refs)
+        sv += f"\n# the other drawings, each with the camera it was drawn from; builds score them too\nEXTRA_REFERENCES = [{rows}\n]"
     return f'''"""{name} — {reference} converted with `voxtool {how}`.
 
 The voxels come from {base_vox}. Add details with the DSL below, or re-run the
