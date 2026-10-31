@@ -173,15 +173,19 @@ def test_crown_depth_rounds_a_flat_crown_without_tilting_it():
     view = {"azimuth": 45, "elevation": 30}
     a, e = np.radians(45), np.radians(30)
     right, back = np.array([np.cos(a), -np.sin(a)]), np.array([np.sin(a), np.cos(a)])
-    flat = [(20 + u * right[0], 20 + u * right[1], z, 4.0) for u, z in ((-8, 30), (0, 30), (8, 30), (0, 37))]
+    spots = ((-6, 30), (0, 30), (6, 30), (0, 36))                             # touching lobes: one crown
+    flat = [(20 + u * right[0], 20 + u * right[1], z, 4.0) for u, z in spots]
     deep = m.crown_depth(flat, 20, 20, view)
-    depth = [(np.array(p[:2]) - [20, 20]) @ back for p in deep]
-    assert len(deep) > len(flat) and max(depth) - min(depth) > 8          # the crown now has depth
-    assert all(min(abs(p[2] - z) for z in (30, 37)) < 2.5 for p in deep)   # copies keep their height
-    top = max(z * np.cos(e) + r for _, _, z, r in flat)
-    assert all(p[2] * np.cos(e) + s * np.sin(e) + p[3] <= top + 1.5 for p, s in zip(deep, depth))   # not above the outline
+    rel = np.array([p[:2] for p in deep]) - [20, 20]
+    u, s, z = rel @ right, rel @ back, np.array([p[2] for p in deep])
+    assert len(deep) > len(flat) and s.min() < -3 and s.max() > 3          # depth in front and behind
+    width = 6 + 4 - (-6 - 4)
+    assert (s.max() - s.min() + 8) / width > 0.7                            # about as deep as wide
+    screen = np.stack([u, z * np.cos(e) + s * np.sin(e)], 1)                # seen from the reference's side
+    given = np.array([(uu, zz * np.cos(e)) for uu, zz in spots])
+    assert np.abs(screen[:, None] - given[None]).sum(-1).min(axis=1).max() < 1.5   # same outline
     info = m.tree(20, 20, 0, 40, ["leaf0", "leaf1"], "bark0", lobes=flat, view=view)
-    assert len(info["lobes"]) == len(deep)
+    assert len(info["lobes"]) > len(flat)
 
 
 def test_carve_to_reference_cuts_what_the_reference_lacks(workspace, monkeypatch):
@@ -193,6 +197,21 @@ def test_carve_to_reference_cuts_what_the_reference_lacks(workspace, monkeypatch
     removed = m.carve_to_reference("reference/hut.png", {"azimuth": 30, "elevation": 25}, only="extra")
     assert removed > 0 and (m.v == m.pal.idx("extra")).sum() < 3 * 2 * 14 * 0.5
     assert np.array_equal(m.v[hut] > 0, np.ones(int(hut.sum()), bool))   # `only` protects the rest
+
+
+def test_damage_breaks_the_model_without_leaving_anything_floating(workspace):
+    from scipy import ndimage
+    removed = []
+    for level in (1, 3):
+        m = load_hut(workspace)
+        before = int((m.v > 0).sum())
+        info = m.damage(level, seed=3)
+        assert info["removed"] > 0 and info["holes"] > 0 and (m.v > 0).sum() < before
+        labels, n = ndimage.label(m.v > 0, structure=np.ones((3, 3, 3), bool))
+        assert set(range(1, n + 1)) <= set(np.unique(labels[:, :, 0]))    # every piece rests on the ground
+        assert "crack" in m.pal.names and "wall_burnt" in m.pal.names
+        removed.append(info["removed"])
+    assert removed[1] > removed[0] * 3
 
 
 def test_coarsen_keeps_the_top_colour_of_each_block():

@@ -585,41 +585,68 @@ class Model:
                     fill: float = 1.0) -> list:
         """Lobes measured on the reference all lie in one plane: the vertical plane through the
         trunk at (x, y) that faces the camera of `view`. That outline is right from the front but
-        flat from the side. This spreads them through the crown's depth: each lobe gets copies
-        straight behind and in front of it - horizontally, at its own height, so the crown doesn't
-        tilt - as far as a crown that is round seen from above (as deep as the lobes at that height
-        are wide) reaches, but no further than the measured outline allows: seen from above at an
-        angle, a lobe further back shows higher up, so lobes near the top of the outline get few
-        copies behind them and lobes near its bottom few in front. fill < 1 spaces the copies
-        further apart. Pass the result to foliage() or tree(lobes=...). Never fill a crown's
-        outline with a flat layer of voxels instead."""
+        flat from the side. This turns them into a round crown with the same outline: it fits the
+        upright ellipsoid whose outline from `view` has the measured width and height (round seen
+        from above when the outline allows it), then places copies of every lobe along that
+        lobe's own line of sight, wherever the line runs inside the ellipsoid. Moving along the
+        line of sight keeps the outline from the reference's side exactly; staying inside the
+        ellipsoid keeps the crown round and upright from every other side. fill < 1 spaces the
+        copies further apart. Pass the result to foliage() or tree(lobes=...). Never fill a
+        crown's outline with a flat layer of voxels, or copy lobes along the line of sight
+        without such a bound - that gives the flat or tilted boards this replaces."""
         rng = self.rng
         a, e = np.radians(view.get("azimuth", 30)), np.radians(view.get("elevation", 30))
         right, back = np.array([np.cos(a), -np.sin(a)]), np.array([np.sin(a), np.cos(a)])
+        ce, se = np.cos(e), np.sin(e)
         L = np.asarray(lobes, float).reshape(-1, 4)
-        u = (L[:, :2] - [x, y]) @ right
-        up = L[:, 2] * np.cos(e)                      # screen height of each lobe's centre (voxel units)
+        rel = L[:, :2] - [x, y]
+        u, s0, r = rel @ right, rel @ back, L[:, 3]
+        v = L[:, 2] * ce + s0 * se                     # screen height of each lobe (voxel units)
+        # lobes whose outlines touch form one cluster (a tier, a cluster on a branch, the whole
+        # crown of a cypress); each cluster gets its own ellipsoid, so gaps between tiers stay open
+        group = np.arange(len(L))
+        for i in range(len(L)):
+            for j in range(i + 1, len(L)):
+                if np.hypot(u[i] - u[j], v[i] - v[j]) < (r[i] + r[j]) * 0.95:
+                    gi, gj = group[i], group[j]
+                    group[group == gj] = gi
         out = []
-        for i, (cx, cy, cz, r) in enumerate(L):
-            out.append((cx, cy, cz, r))
-            band = np.abs(L[:, 2] - cz) <= np.maximum(L[:, 3], r)          # lobes at about this height
-            lo, hi = (u[band] - L[band, 3]).min(), (u[band] + L[band, 3]).max()
-            half = np.sqrt(max(((hi - lo) / 2) ** 2 - (u[i] - (lo + hi) / 2) ** 2, 0.0)) - r * 0.6
-            over = np.abs(u - u[i]) < L[:, 3]                               # lobes covering this column
-            reach = np.sqrt(np.maximum(L[over, 3] ** 2 - (u[over] - u[i]) ** 2, 0))
-            room_back = (up[over] + reach).max() - up[i] - r              # outline above this lobe
-            room_front = up[i] - r - (up[over] - reach).min()             # outline below it
-            if np.sin(e) > 1e-3:
-                limit = {1: room_back / np.sin(e), -1: room_front / np.sin(e)}
+        for g in np.unique(group):
+            k = group == g
+            out += self._depth_cluster(x, y, right, back, ce, se, u[k], s0[k], L[k, 2], r[k], fill, rng)
+        return out
+
+    @staticmethod
+    def _depth_cluster(x, y, right, back, ce, se, u, s0, z, r, fill, rng) -> list:
+        """crown_depth() for one cluster of touching lobes (screen coords u, depth s0, height z)."""
+        v = z * ce + s0 * se
+        uc, A = ((u - r).min() + (u + r).max()) / 2, ((u + r).max() - (u - r).min()) / 2
+        vc, h = ((v - r).min() + (v + r).max()) / 2, ((v + r).max() - (v - r).min()) / 2
+        # ellipsoid semi-axes: A across, B in depth, C up; its outline is A wide and
+        # sqrt((C cos e)^2 + (B sin e)^2) high. Prefer B = A (round from above).
+        B, C = A, np.sqrt(max(h ** 2 - (A * se) ** 2, 0.0)) / max(ce, 1e-6)
+        if C < 0.45 * h / max(ce, 1e-6):                # outline too low for a round crown: shallower
+            C = 0.45 * h / max(ce, 1e-6)
+            B = np.sqrt(max(h ** 2 - (C * ce) ** 2, 0.0)) / max(se, 1e-6) if se > 1e-3 else A
+        zc = vc / max(ce, 1e-6)                          # centre on the trunk's plane (s = 0)
+        out = []
+        for ui, si, zi, ri in zip(u, s0, z, r):
+            a2, b2, c2 = (max(q - ri * 0.6, ri * 0.5) for q in (A, B, C))   # keep whole lobes inside
+            # point on the line of sight: (ui, si + t ce, zi - t se); inside where q(t) <= 0
+            qa = (ce / b2) ** 2 + (se / c2) ** 2
+            qb = 2 * (si * ce / b2 ** 2 - (zi - zc) * se / c2 ** 2)
+            qc = ((ui - uc) / a2) ** 2 + (si / b2) ** 2 + ((zi - zc) / c2) ** 2 - 1
+            disc = qb ** 2 - 4 * qa * qc
+            if disc <= 0:
+                ts = np.array([0.0])                     # the line misses the ellipsoid: keep the lobe
             else:
-                limit = {1: np.inf, -1: np.inf}
-            step = max(r * 1.1 / max(fill, 0.1), 1.0)
-            for sign in (1, -1):
-                k = 1
-                while k * step <= min(half, limit[sign]):
-                    p = np.array([cx, cy]) + back * sign * k * step
-                    out.append((p[0], p[1], cz + rng.normal(0, r * 0.15), r * rng.uniform(0.85, 1.0)))
-                    k += 1
+                t1, t2 = (-qb - np.sqrt(disc)) / (2 * qa), (-qb + np.sqrt(disc)) / (2 * qa)
+                step = max(ri * 1.1 / max(fill, 0.1), 1.0)
+                n = max(1, int((t2 - t1) // step) + 1)
+                ts = (t1 + t2) / 2 + (np.arange(n) - (n - 1) / 2) * step
+            for t in ts:
+                p = np.array([x, y]) + right * ui + back * (si + t * ce)
+                out.append((p[0], p[1], zi - t * se + rng.normal(0, ri * 0.1), ri * rng.uniform(0.88, 1.0)))
         return out
 
     def tree(self, x: float, y: float, z: float, height: float, leaves: Sequence[Color],
@@ -646,7 +673,7 @@ class Model:
             lobes = _crown_lobes(style, axis, H, W, rng)
         lobes = [tuple(map(float, lb)) for lb in lobes]
         crown = self.crown_depth(lobes, x, y, view) if view is not None else lobes   # limbs go to `lobes` only
-        top = max(lobes, key=lambda lb: lb[2] + lb[3])          # the trunk ends inside the highest lobe
+        top = max(crown, key=lambda lb: lb[2] + lb[3])          # the trunk ends inside the highest lobe
         f_top = float(np.clip((top[2] - top[3] * 0.3 - foot[2]) / (tip[2] - foot[2]), 0.3, 1.0))
         stem = [axis(f) + np.r_[rng.normal(0, H * 0.012, 2), 0] * (0 < f < f_top)
                 for f in np.linspace(0, f_top, 6)]
@@ -656,9 +683,9 @@ class Model:
                 d = np.array([np.cos(a), np.sin(a), 0.0])
                 self.tube([foot + [0, 0, r0 * 2.2], foot + d * r0 * 1.6 + [0, 0, r0 * 0.6], foot + d * r0 * 2.8],
                           [r0 * 0.75, r0 * 0.5, r0 * 0.3], bark)
-        if limbs:
-            z0, z1 = stem[1][2], stem[-1][2]
-            for cx, cy, cz, r in lobes:
+        if limbs:              # about one limb per lobe given, spread through the crown's depth
+            z0 = stem[1][2]
+            for cx, cy, cz, r in crown[::max(1, len(crown) // len(lobes))]:
                 f = float(np.clip((cz - r * 0.9 - foot[2]) / max(tip[2] - foot[2], 1e-6), (z0 - foot[2]) / H, 0.95))
                 start = axis(f)
                 end = np.array([cx, cy, cz])
@@ -699,6 +726,127 @@ class Model:
         cut = pts[~keep]
         self.v[tuple(cut.T)] = 0
         return len(cut)
+
+    # ------------------------------------------------------------ damage
+
+    def damage(self, level: float = 1.0, *, seed: int = 0, debris: float = 0.35, scorch: bool = True) -> dict:
+        """Wrecks the model in place for damaged / ruined variants (game assets that swap from
+        intact to broken). level 1 = chipped edges, a few holes and cracks; 2 = bigger holes, more
+        cracks; 3 = a caved-in top as well. Sizes follow the model's size, so it looks the same
+        at any res. Pieces left floating fall as rubble, and part of what breaks off lies in piles
+        on the ground (`debris` = share kept); scorch darkens the broken edges. Glowing colours
+        are only removed, never darkened. Returns counts of what happened."""
+        from scipy import ndimage
+        rng = np.random.default_rng(seed)
+        v = self.v
+        filled = v > 0
+        if not filled.any() or level <= 0:
+            return {"removed": 0, "debris": 0}
+        before = v.copy()
+        xs, ys, zs = np.nonzero(filled)
+        lo, hi = np.array([xs.min(), ys.min(), zs.min()]), np.array([xs.max(), ys.max(), zs.max()])
+        size = float((hi - lo).max() + 1)
+        ground = int(zs.min())
+        nb = sum(_shift_fill(filled, d) for d in _DIRS6)            # filled neighbours per voxel
+        exposed = filled & (nb < 6)
+        # 1. chipped edges and corners: voxels with three or more open sides
+        chip = filled & (nb <= 3) & (rng.random(v.shape) < min(0.12 * level, 0.6))
+        chip[:, :, ground] = False
+        v[chip] = 0
+        # 2. holes: noisy balls carved around surface points (not in the bottom layer)
+        cand = np.argwhere(exposed & (np.arange(v.shape[2])[None, None, :] > ground + 1))
+        holes = []
+        if len(cand):
+            for _ in range(int(round(level * (2 + size / 40)))):
+                c = cand[rng.integers(len(cand))]
+                r = size * rng.uniform(0.03, 0.05 + 0.02 * level)
+                holes.append((c, r))
+                self._carve_ball(c, r, rng)
+        # 3. a caved-in top for heavy damage
+        if level >= 2.5:
+            top = cand[cand[:, 2] >= lo[2] + 0.7 * (hi[2] - lo[2])] if len(cand) else cand
+            if len(top):
+                c = top[rng.integers(len(top))]
+                r = size * 0.2 * min(level / 3, 1.5)
+                holes.append((c, r))
+                self._carve_ball(c, r, rng, squash=0.7)
+        # 4. cracks: short walks over the surface, mostly up and down, each step carved or darkened
+        crack_id = self._damage_colour("crack", "#2b2724")
+        cracked = np.zeros(v.shape, bool)
+        surf = np.argwhere((v > 0) & (sum(_shift_fill(v > 0, d) for d in _DIRS6) < 6))
+        for _ in range(int(round(level * (3 + size / 25)))) if len(surf) else []:
+            p = surf[rng.integers(len(surf))].astype(float)
+            step = np.array([rng.normal(0, 0.5), rng.normal(0, 0.5), rng.choice([-1.0, 1.0])])
+            for _ in range(int(size * rng.uniform(0.08, 0.2))):
+                q = np.round(p).astype(int)
+                if not (np.all(q >= 0) and np.all(q < v.shape)) or v[tuple(q)] == 0:
+                    break
+                cracked[tuple(q)] = True
+                p += step / np.linalg.norm(step)
+                step += rng.normal(0, 0.35, 3)
+        v[cracked & (rng.random(v.shape) < 0.5)] = 0
+        v[cracked & (v > 0)] = crack_id
+        # 5. pieces the damage cut off from the ground fall and become rubble (touching edges or
+        #    corners counts as connected; decorations that were never connected stay put)
+        def grounded(a):
+            labels, _ = ndimage.label(a, structure=np.ones((3, 3, 3), bool))
+            return np.isin(labels, list(set(np.unique(labels[:, :, ground])) - {0}))
+        floating = (v > 0) & ~grounded(v > 0) & grounded(before > 0)
+        fallen = np.argwhere(floating)
+        fallen_col = v[floating]
+        v[floating] = 0
+        # 6. rubble: part of what broke off lies in piles below where it came from
+        broken = np.argwhere((before > 0) & (v == 0))
+        cols = before[tuple(broken.T)]
+        keep = rng.random(len(broken)) < debris
+        pieces = np.concatenate([broken[keep], fallen]) if len(fallen) else broken[keep]
+        piece_col = np.concatenate([cols[keep], fallen_col]) if len(fallen) else cols[keep]
+        centre = (lo + hi) / 2
+        placed = 0
+        for (px, py, _), col in zip(pieces, piece_col):
+            out = np.array([px, py], float) - centre[:2]
+            out = out / (np.linalg.norm(out) + 1e-6) * rng.uniform(0, 3)       # rolls away from the middle
+            x = int(round(px + out[0] + rng.normal(0, 1.5)))
+            y = int(round(py + out[1] + rng.normal(0, 1.5)))
+            if not (0 <= x < v.shape[0] and 0 <= y < v.shape[1]):
+                continue
+            column = np.nonzero(v[x, y, ground:])[0]
+            z = ground + (column.max() + 1 if len(column) else 0)
+            if z < v.shape[2]:
+                v[x, y, z] = col
+                placed += 1
+        # 7. scorch: darken what lies next to the holes and cracks
+        if scorch:
+            hurt = ndimage.binary_dilation((before > 0) & (v == 0) | cracked, iterations=max(1, int(size / 40)))
+            near = hurt & (v > 0) & (v != crack_id)
+            for c in np.unique(v[near]):
+                if self.pal.is_emissive(int(c)):
+                    continue
+                dark = self._damage_colour(f"{self._name_of(int(c))}_burnt",
+                                           "#%02x%02x%02x" % tuple(int(k * 0.55) for k in self.pal.rgba[c][:3]))
+                sel = near & (v == c) & (rng.random(v.shape) < 0.6)
+                v[sel] = dark
+        return {"removed": int(((before > 0) & (v == 0)).sum()), "debris": placed, "holes": len(holes),
+                "fallen": int(len(fallen))}
+
+    def _carve_ball(self, c, r, rng, squash: float = 1.0):
+        """Carves a noisy ball of radius r (voxels) around voxel c; squash < 1 flattens it."""
+        R = int(np.ceil(r * 1.3))
+        sl = tuple(slice(max(int(k) - R, 0), min(int(k) + R + 1, n)) for k, n in zip(c, self.v.shape))
+        X, Y, Z = np.meshgrid(*(np.arange(s.start, s.stop) for s in sl), indexing="ij")
+        d = np.sqrt((X - c[0]) ** 2 + (Y - c[1]) ** 2 + ((Z - c[2]) / squash) ** 2) / max(r, 0.5)
+        self.v[sl][d + rng.uniform(-0.25, 0.25, X.shape) <= 1] = 0
+
+    def _damage_colour(self, name: str, hex_color: str) -> int:
+        if name in self.pal.names:
+            return self.pal.names[name]
+        if self.pal._next > 255:                      # palette full: the darkest existing colour
+            used = [i for i in self.pal.names.values()]
+            return min(used, key=lambda i: int(self.pal.rgba[i][:3].sum()))
+        return self.pal.add(name, hex_color)
+
+    def _name_of(self, idx: int) -> str:
+        return next((n for n, i in self.pal.names.items() if i == idx), str(idx))
 
     # ------------------------------------------------------------ colours from the reference
 
@@ -986,4 +1134,16 @@ def _crown_lobes(style: str, axis, H: float, W: float, rng) -> list:
         out.append((*c, R * 0.45))
     else:
         raise ValueError(f"unknown tree style {style!r}: round, column, cone, tiered, branched or spread")
+    return out
+
+
+_DIRS6 = ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1))
+
+
+def _shift_fill(a: np.ndarray, d) -> np.ndarray:
+    """out[p] = a[p + d] as int (0 outside the grid), for counting filled neighbours."""
+    out = np.zeros(a.shape, np.int8)
+    src = tuple(slice(max(k, 0), a.shape[i] + min(k, 0)) for i, k in enumerate(d))
+    dst = tuple(slice(max(-k, 0), a.shape[i] + min(-k, 0)) for i, k in enumerate(d))
+    out[dst] = a[src]
     return out
