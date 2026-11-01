@@ -1,0 +1,32 @@
+# The project website, built by GitHub Pages from this folder:
+# Settings → Pages → Build and deployment → Deploy from a branch → main, /docs
+# → https://nangmancatdev.github.io/2DtoVoxel/
+# index.md / index.ko.md are the landing pages; the guides next to them become pages as they are.
+title: 2DtoVoxel
+tagline: Turn a picture into a MagicaVoxel voxel model with Claude Code
+description: >-
+  Free, open-source image-to-voxel tool: Claude Code writes your picture as a voxel build script,
+  scores every build against the picture and keeps fixing it. You get an editable MagicaVoxel .vox file.
+url: https://nangmancatdev.github.io
+baseurl: /2DtoVoxel
+lang: en
+author: NangManCatDev
+image: /images/social-preview.png
+theme: jekyll-theme-cayman
+
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-titles-from-headings
+relative_links:
+  enabled: true
+titles_from_headings:
+  strip_title: true   # the theme's header shows the title already
+
+# Ownership checks for Google Search Console / Bing Webmaster Tools ("HTML tag" method):
+# paste the content="..." value of the tag each one gives you, then submit sitemap.xml there.
+# webmaster_verifications:
+#   google: ...
+#   bing: ...

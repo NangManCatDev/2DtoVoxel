@@ -1,6 +1,6 @@
 # Troubleshooting, tips and limitations
 
-**English** | [한국어](troubleshooting.ko.md) · ← [Back to README](../README.md)
+**English** | [한국어](troubleshooting.ko.md) · ← [Back to README](https://github.com/NangManCatDev/2DtoVoxel#readme)
 
 ## Troubleshooting
 

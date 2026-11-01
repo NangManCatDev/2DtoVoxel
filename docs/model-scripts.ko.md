@@ -1,6 +1,6 @@
 # 모델 스크립트 쓰기
 
-[English](model-scripts.md) | **한국어** · ← [README로 돌아가기](../README.ko.md)
+[English](model-scripts.md) | **한국어** · ← [README로 돌아가기](https://github.com/NangManCatDev/2DtoVoxel/blob/main/README.ko.md)
 
 모델 하나는 `models/` 안의 Python 파일 하나입니다. Claude가 이 스크립트를 쓰고 고치며, 직접 고쳐도 됩니다. `.vox`는 항상 스크립트에서 다시 만들어집니다.
 
@@ -57,7 +57,7 @@ def build() -> Model:
 
 ![tiny_hut 예제 미리보기](images/example-tiny-hut.png)
 
-코너석, 계단식 박공, 차양, 랜턴, 화단, 덩굴까지 들어간 실제 예시는 [models/player_house.py](../models/player_house.py)를 보세요.
+코너석, 계단식 박공, 차양, 랜턴, 화단, 덩굴까지 들어간 실제 예시는 [models/player_house.py](https://github.com/NangManCatDev/2DtoVoxel/blob/main/models/player_house.py)를 보세요.
 
 ## 고해상도 모델
 
@@ -110,7 +110,7 @@ def build() -> Model:
 
 ## DSL 레퍼런스
 
-모든 메서드는 `Model`에 있습니다([voxtool/model.py](../voxtool/model.py)). `c`는 팔레트 이름, 팔레트 번호, 또는 `None`(깎기)입니다.
+모든 메서드는 `Model`에 있습니다([voxtool/model.py](https://github.com/NangManCatDev/2DtoVoxel/blob/main/voxtool/model.py)). `c`는 팔레트 이름, 팔레트 번호, 또는 `None`(깎기)입니다.
 
 | 분류 | 메서드 | 용도 |
 |---|---|---|

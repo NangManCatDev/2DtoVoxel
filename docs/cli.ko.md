@@ -1,6 +1,6 @@
 # 명령줄과 설정
 
-[English](cli.md) | **한국어** · ← [README로 돌아가기](../README.ko.md)
+[English](cli.md) | **한국어** · ← [README로 돌아가기](https://github.com/NangManCatDev/2DtoVoxel/blob/main/README.ko.md)
 
 프로젝트 폴더에서 실행합니다. `voxtool`은 `pip install -e .` 후에 쓸 수 있고, 아니면 `py -m voxtool`(Windows)이나 `python3 -m voxtool`(macOS / Linux)을 쓰세요.
 

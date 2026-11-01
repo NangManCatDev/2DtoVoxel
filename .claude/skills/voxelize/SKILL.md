@@ -13,10 +13,12 @@ description: >-
 # voxelize — 레퍼런스 이미지 → MagicaVoxel 모델
 
 인자: 레퍼런스 이미지 경로 (예: `reference/플레이어의집_레퍼런스.png`). 없으면 `reference/`에서 가장 최근 이미지를
-쓰고, 어떤 걸 골랐는지 말한다. 프로젝트 `CLAUDE.md`의 좌표 규칙과 요령을 따른다.
+쓰고, 어떤 걸 골랐는지 말한다. 프로젝트에 `CLAUDE.md`가 있으면 그 좌표 규칙과 요령도 따른다. 핵심 규칙:
+배열은 `[x, y, z]`이고 **z가 위, y=0이 정면**(MagicaVoxel 기본 카메라가 보는 면). 상자는 위치+크기
+`m.box(x, y, z, w, d, h, 색)`, `region=`도 `(x, y, z, w, d, h)` 순서. 색은 `m.pal.add(이름, hex)`로 등록해 이름으로 쓴다.
 
-**필요한 것:** Python 3.10+와 numpy·Pillow·scipy(`pip install -e .`). MagicaVoxel 0.99.x는 열기·캡처에만
-필요하고, 창 캡처(`shot`)는 Windows 전용이다.
+**필요한 것:** Python 3.10+와 numpy·Pillow·scipy(`pip install 2dtovoxel`, 소스에서는 `pip install -e .`).
+MagicaVoxel 0.99.x는 열기·캡처에만 필요하고, 창 캡처(`shot`)는 Windows 전용이다.
 
 **명령 형식:** 아래 `VT`는 voxtool 실행 명령이다 — Windows `py -m voxtool`, macOS/Linux `python3 -m voxtool`,
 설치했다면 `voxtool`. UI가 실행한 작업이면 지시문에 적힌 형식을 정확히 그대로 쓴다(권한 규칙과 일치해야 함).

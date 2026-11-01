@@ -1,0 +1,33 @@
+<!-- What the project is, for search engines -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": ["SoftwareApplication", "SoftwareSourceCode"],
+  "name": "2DtoVoxel",
+  "description": {{ site.description | jsonify }},
+  "url": "{{ '/' | absolute_url }}",
+  "image": "{{ site.image | absolute_url }}",
+  "applicationCategory": "DesignApplication",
+  "operatingSystem": "Windows, macOS, Linux",
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+  "codeRepository": "https://github.com/NangManCatDev/2DtoVoxel",
+  "programmingLanguage": "Python",
+  "license": "https://opensource.org/licenses/MIT",
+  "keywords": "image to voxel, MagicaVoxel, .vox, voxel art, Claude Code, AI voxel generator, pixel art to voxel"
+}
+</script>
+<!-- GitHub draws ```mermaid blocks; Jekyll leaves them as code, so draw them here -->
+<script type="module">
+  const blocks = document.querySelectorAll("div.language-mermaid code");
+  if (blocks.length) {
+    const { default: mermaid } = await import("https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs");
+    for (const code of blocks) {
+      const pre = document.createElement("pre");
+      pre.className = "mermaid";
+      pre.textContent = code.textContent;
+      code.closest("div.language-mermaid").replaceWith(pre);
+    }
+    mermaid.initialize({ startOnLoad: false });
+    await mermaid.run();
+  }
+</script>

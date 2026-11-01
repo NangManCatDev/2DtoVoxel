@@ -3,7 +3,7 @@ import json
 import re
 import struct
 
-from conftest import load_hut, make_silhouette, make_sprite, run_voxtool
+from conftest import REPO, load_hut, make_silhouette, make_sprite, run_voxtool
 
 
 def test_build_writes_previews_and_scores(workspace):
@@ -89,3 +89,16 @@ def test_ref_sample_accepts_both_coordinate_styles(workspace):
     assert a == b and a.count("#") == 2
     bad = run_voxtool(workspace, "ref", "sample", "reference/hut.png", "10", "10", "20", check=False)
     assert bad.returncode != 0 and "x,y pairs" in bad.stderr
+
+
+def test_install_skill_and_the_readme_pypi_shows(workspace):
+    run_voxtool(workspace, "install-skill", "--dest", str(workspace / "skills"))
+    assert (workspace / "skills" / "voxelize" / "SKILL.md").is_file()
+    # setup.py points README links at GitHub: PyPI shows the README without the repository around it
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("setup_script", REPO / "setup.py")
+    setup_script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(setup_script)                        # setup() only runs as __main__
+    text = setup_script.pypi_readme((REPO / "README.md").read_text(encoding="utf-8"))
+    assert not re.findall(r"\]\((?!https?://|mailto:)", text) and "```mermaid" not in text
+    assert "](https://raw.githubusercontent.com/NangManCatDev/2DtoVoxel/main/docs/images/" in text

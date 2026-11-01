@@ -1,0 +1,22 @@
+# 2DtoVoxel
+
+> Free, open-source (MIT) tool that turns a picture of one object (concept art, a 3D render, a game screenshot, pixel art) into an editable MagicaVoxel `.vox` voxel model. Claude Code writes the model as a short Python build script; the included `voxtool` library builds the `.vox`, renders previews and scores every build against the picture (silhouette IoU, colour ΔE, difference images) until the match stops improving. It also converts pixel art and front/side/top drawings to voxels without AI, and exports sprite sheets and GLB / OBJ / PLY meshes.
+
+- Repository: https://github.com/NangManCatDev/2DtoVoxel
+- Install: `pip install 2dtovoxel`, or clone the repository and run `python -m pip install -e .` (Python 3.10+, numpy, Pillow, scipy).
+- Use: `voxtool ui` (local web UI, English / Korean), `/voxelize reference/picture.png` in Claude Code, or the `voxtool` command line (`build`, `score`, `fit-camera`, `extrude`, `carve`, `export`, `sprites`, `recolor`).
+- Needs Claude Code (logged in) to generate models; no separate API key. About 10–30 minutes per model. MagicaVoxel is optional, for opening the results.
+
+## Docs
+
+- [README](https://raw.githubusercontent.com/NangManCatDev/2DtoVoxel/main/README.md): what it does, install, web UI, score and checks, model scripts, conversions, game assets, CLI, outputs, limitations
+- [How it works](https://raw.githubusercontent.com/NangManCatDev/2DtoVoxel/main/docs/how-it-works.md): the build loop, renderer, background cutout, score, camera fitting, UI job permissions
+- [Model scripts](https://raw.githubusercontent.com/NangManCatDev/2DtoVoxel/main/docs/model-scripts.md): the build-script format and the full DSL reference
+- [Command line](https://raw.githubusercontent.com/NangManCatDev/2DtoVoxel/main/docs/cli.md): every voxtool command, option and environment variable
+- [Troubleshooting](https://raw.githubusercontent.com/NangManCatDev/2DtoVoxel/main/docs/troubleshooting.md): common problems, tips and limitations
+
+## Optional
+
+- [Changelog](https://raw.githubusercontent.com/NangManCatDev/2DtoVoxel/main/CHANGELOG.md)
+- [README in Korean](https://raw.githubusercontent.com/NangManCatDev/2DtoVoxel/main/README.ko.md)
+- [The /voxelize skill Claude follows](https://raw.githubusercontent.com/NangManCatDev/2DtoVoxel/main/.claude/skills/voxelize/SKILL.md)

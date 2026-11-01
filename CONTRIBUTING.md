@@ -45,6 +45,7 @@ How the parts fit together is described in [docs/how-it-works.md](docs/how-it-wo
 - **UI job permissions.** Claude jobs started by the UI may only edit their own model script and `output/`, and run voxtool commands for their own model (`allowed_tools` in `voxtool/ui/jobs.py`). Keep the `/voxelize` workflow runnable with voxtool commands alone, and don't widen these permissions without a good reason; see [SECURITY.md](SECURITY.md).
 - **Tests.** Add or update a test for behaviour you change. Keep tests fast and self-contained (they use temporary workspaces, no network).
 - **Changelog.** Add a line to [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
+- **Releases.** Set `version` in `pyproject.toml`, rename the changelog's "Unreleased" heading to that version, and push a tag `v<version>`. `.github/workflows/release.yml` builds the package, creates the GitHub release from that changelog section and publishes to PyPI.
 
 ## Reporting bugs
 

@@ -2,7 +2,7 @@
 
 **English** · [한국어](README.ko.md)
 
-**2DtoVoxel turns a picture of one object (concept art, a 3D render, a game screenshot, pixel art) into a voxel model for [MagicaVoxel][magicavoxel] (a `.vox` file).** [Claude Code][claude-code] looks at the picture and writes the model as a short Python build script. The included `voxtool` library turns that script into a `.vox` file, renders previews, and measures how closely the result matches the picture. Claude then reads the measurements, fixes the script, and builds again until the match stops improving. You get the `.vox` file and the script. You can open the `.vox` and keep editing it in MagicaVoxel, and you or Claude can change the script later.
+**2DtoVoxel is a free, open-source image-to-voxel tool: it turns a picture of one object (concept art, a 3D render, a game screenshot, pixel art) into a voxel model for [MagicaVoxel][magicavoxel] (a `.vox` file).** [Claude Code][claude-code] looks at the picture and writes the model as a short Python build script. The included `voxtool` library turns that script into a `.vox` file, renders previews, and measures how closely the result matches the picture. Claude then reads the measurements, fixes the script, and builds again until the match stops improving. You get the `.vox` file and the script. You can open the `.vox` and keep editing it in MagicaVoxel, and you or Claude can change the script later.
 
 It also does things that don't need Claude: it converts pixel art into voxels in seconds, carves a model from front, side and top drawings, and exports game assets (sprite sheets, GLB / OBJ / PLY meshes, palette variants).
 
@@ -106,6 +106,8 @@ python -m pip install -e .
 ```
 
 This installs the dependencies and a `voxtool` command. Without installing, every command also works from the project folder as `py -m voxtool …` on Windows or `python3 -m voxtool …` on macOS / Linux. Run commands from the project folder: models, references and outputs are looked up relative to it.
+
+**Without cloning:** `python -m pip install 2dtovoxel` installs the same package from PyPI. Make an empty folder for your models and run `voxtool ui` there: it creates `models/`, `reference/` and `output/`, and copies the `/voxelize` skill to `.claude/skills/` for Claude. For Claude Code chats in other folders, `voxtool install-skill` copies the skill to `~/.claude/skills`. The example models, the tests and the docs are only in the repository.
 
 ## Quick start
 
@@ -497,7 +499,10 @@ The web UI starts Claude Code with file access, so it is built to stay on your c
 │  ├─ __main__.py                 the CLI
 │  └─ ui/                         web UI: server.py, jobs.py (Claude jobs, prompts, permissions), static/
 ├─ tests/                         pytest suite (runs the real CLI and UI server in temporary folders)
-├─ docs/                          detailed guides (English + Korean) and README images
+├─ docs/                          detailed guides (English + Korean), README images, and the website
+│                                 (GitHub Pages: _config.yml, index.md / index.ko.md, llms.txt)
+├─ setup.py                       packs the skill into the wheel; README links for PyPI
+├─ .github/workflows/             ci.yml (tests + package check), release.yml (GitHub release + PyPI)
 ├─ output/                        generated files (git-ignored)
 ├─ .claude/skills/voxelize/       the /voxelize skill
 └─ CLAUDE.md                      instructions for Claude Code working in this repository
@@ -510,9 +515,13 @@ python -m pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-The tests build, score, convert and export models, run the CLI, and start the real UI server, all in temporary workspaces without network access. They take about 20 seconds. CI runs them on Windows and Ubuntu with Python 3.10 and 3.12. Contribution guidelines (two languages, UI job permissions, tests, changelog) are in [CONTRIBUTING.md](CONTRIBUTING.md), and changes are listed in [CHANGELOG.md](CHANGELOG.md).
+The tests build, score, convert and export models, run the CLI, and start the real UI server, all in temporary workspaces without network access. They take about 20 seconds. CI runs them on Windows and Ubuntu with Python 3.10 and 3.12, and also builds the wheel and checks that it installs and finds the skill without a checkout.
+
+To release, set `version` in `pyproject.toml`, rename the changelog's "Unreleased" heading to that version, and push a tag such as `v0.3.0`. `release.yml` builds the package, creates the GitHub release with that changelog section as its notes, and publishes to PyPI. Contribution guidelines (two languages, UI job permissions, tests, changelog) are in [CONTRIBUTING.md](CONTRIBUTING.md), and changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Further documentation
+
+The website, **<https://nangmancatdev.github.io/2DtoVoxel/>**, has an overview page in English and Korean and these guides.
 
 | Guide | Contents |
 |---|---|

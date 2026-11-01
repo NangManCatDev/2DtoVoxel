@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 ### What the score can't see
 - The score looks from one direction only, so a flat board or a floating roof can score well. Every build now also writes `_turn.png` (the model from four sides) and prints `depth:` (front-to-back depth ÷ width per object, `(thin)` under 0.5) and `loose:` (pieces touching nothing else of their object, with size and position). `m.loose_pieces()` lists them and `m.remove_loose()` deletes specks.
@@ -33,6 +33,13 @@
 - The 3D viewer handles grids over 255 (16-bit coordinates) and shows very large models coarser instead of freezing.
 - The `/voxelize` skill has a high-resolution finishing step.
 
+### Install, release and website
+- `pip install 2dtovoxel` works without a checkout: the wheel carries the `/voxelize` skill, `voxtool install-skill` finds it there, and `voxtool ui` in an empty folder creates `models/`, `reference/`, `output/` and `.claude/skills/voxelize/`. The PyPI page shows the README with links and images pointing at GitHub.
+- Releases come from a tag: `release.yml` builds the package, creates the GitHub release with the version's changelog section, and publishes to PyPI. CI also builds the wheel and checks it installs and finds the skill.
+- A website from `docs/` (GitHub Pages): overview pages in English and Korean, the guides, a sitemap, `llms.txt`, and a social preview image (`docs/images/social-preview.png`). Links from the guides to files outside `docs/` now point at GitHub so they work there too.
+- The `/voxelize` skill states the coordinate rules itself instead of relying on the project's `CLAUDE.md`.
+
+### Project
 - README rewritten as one detailed page in English and Korean: what the project does in plain words and an "At a glance" table first, then a gallery, how it works, install, quick start, the web UI screen by screen, the score and the checks, model scripts, conversions, game assets, a full command reference, output files, tips, limitations, troubleshooting, security and the project layout. Algorithms and the full DSL reference remain in `docs/`.
 - Added `CONTRIBUTING.md`, `.github/repo-meta.yml` (About description and topics) and a logo.
 - README shows a real generation run (scores per build, time, cost) with an animation of each build.

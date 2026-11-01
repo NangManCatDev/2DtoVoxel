@@ -1,6 +1,6 @@
 # Command line and configuration
 
-**English** | [한국어](cli.ko.md) · ← [Back to README](../README.md)
+**English** | [한국어](cli.ko.md) · ← [Back to README](https://github.com/NangManCatDev/2DtoVoxel#readme)
 
 Run commands from the project folder. `voxtool` works after `pip install -e .`; otherwise use `py -m voxtool` (Windows) or `python3 -m voxtool` (macOS / Linux).
 

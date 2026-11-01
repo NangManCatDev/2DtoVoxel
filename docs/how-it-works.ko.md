@@ -1,6 +1,6 @@
 # 2DtoVoxel의 동작 방식
 
-[English](how-it-works.md) | **한국어** · ← [README로 돌아가기](../README.ko.md)
+[English](how-it-works.md) | **한국어** · ← [README로 돌아가기](https://github.com/NangManCatDev/2DtoVoxel/blob/main/README.ko.md)
 
 ## 전체 흐름
 
@@ -120,7 +120,7 @@ sequenceDiagram
 
 서버는 워크스페이스에서 `claude -p --output-format stream-json --permission-mode dontAsk --allowedTools …`를 실행하므로, Claude는 `CLAUDE.md`와 `/voxelize` 스킬도 읽고 시작합니다. 스트림의 이벤트 하나하나가 로그 항목이 됩니다(답변, 명령, Claude가 본 이미지. 이미지는 복사해 두어 반복마다 따로 남습니다). `build models/<이름>.py` 명령의 결과가 오면 서버가 `score:` 줄을 읽고 스크립트와 비교·점수·미리보기 이미지를 반복 기록으로 스냅샷합니다. **되돌리기**는 스냅샷을 다시 복사하고 빌드합니다. 빌드 횟수 상한은 지시문에 적고, 상한보다 두 번 더 빌드하면 작업을 멈춰서 강제합니다. 비용 상한은 Claude Code에 `--max-budget-usd`로 넘깁니다. 작업은 `output/_jobs/<id>/job.json`에 저장되고 서버가 시작할 때 다시 불러옵니다.
 
-작업마다 받는 허용 목록(자기 스크립트와 `output/`만 수정, 자기 모델의 voxtool 명령만 실행)은 [SECURITY.md](../SECURITY.md)에 설명되어 있습니다.
+작업마다 받는 허용 목록(자기 스크립트와 `output/`만 수정, 자기 모델의 voxtool 명령만 실행)은 [SECURITY.md](https://github.com/NangManCatDev/2DtoVoxel/blob/main/SECURITY.md)에 설명되어 있습니다.
 
 ## 변환
 

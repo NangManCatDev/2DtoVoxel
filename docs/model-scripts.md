@@ -1,6 +1,6 @@
 # Writing model scripts
 
-**English** | [한국어](model-scripts.ko.md) · ← [Back to README](../README.md)
+**English** | [한국어](model-scripts.ko.md) · ← [Back to README](https://github.com/NangManCatDev/2DtoVoxel#readme)
 
 Every model is a Python file in `models/`. Claude writes and edits these scripts, and you can do the same: the `.vox` is always rebuilt from the script.
 
@@ -57,7 +57,7 @@ Save it as `models/tiny_hut.py` and run `voxtool build models/tiny_hut.py --open
 
 ![Preview of the tiny_hut example](images/example-tiny-hut.png)
 
-For a full, real example (quoins, crow-stepped parapet, awning, lanterns, planters, vines) see [models/player_house.py](../models/player_house.py).
+For a full, real example (quoins, crow-stepped parapet, awning, lanterns, planters, vines) see [models/player_house.py](https://github.com/NangManCatDev/2DtoVoxel/blob/main/models/player_house.py).
 
 ## High-resolution models
 
@@ -110,7 +110,7 @@ When the reference is itself voxel art, match its grain: one reference cube shou
 
 ## DSL reference
 
-All methods live on `Model` ([voxtool/model.py](../voxtool/model.py)). `c` is a palette name, a palette index, or `None` (carve).
+All methods live on `Model` ([voxtool/model.py](https://github.com/NangManCatDev/2DtoVoxel/blob/main/voxtool/model.py)). `c` is a palette name, a palette index, or `None` (carve).
 
 | Group | Method | Purpose |
 |---|---|---|

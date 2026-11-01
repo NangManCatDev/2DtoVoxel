@@ -1,6 +1,6 @@
 # 문제 해결, 요령, 제한 사항
 
-[English](troubleshooting.md) | **한국어** · ← [README로 돌아가기](../README.ko.md)
+[English](troubleshooting.md) | **한국어** · ← [README로 돌아가기](https://github.com/NangManCatDev/2DtoVoxel/blob/main/README.ko.md)
 
 ## 문제 해결
 

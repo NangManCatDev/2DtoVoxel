@@ -1,6 +1,6 @@
 # How 2DtoVoxel works
 
-**English** | [한국어](how-it-works.ko.md) · ← [Back to README](../README.md)
+**English** | [한국어](how-it-works.ko.md) · ← [Back to README](https://github.com/NangManCatDev/2DtoVoxel#readme)
 
 ## The loop
 
@@ -120,7 +120,7 @@ sequenceDiagram
 
 The server starts `claude -p --output-format stream-json --permission-mode dontAsk --allowedTools …` in the workspace, so Claude also reads `CLAUDE.md` and the `/voxelize` skill. Every event in the stream becomes a log entry: replies, commands, and the images Claude looks at (copied, so each iteration keeps its own). When the result of a `build models/<name>.py` command arrives, the server parses its `score:` line and snapshots the script and the comparison, score and preview images as an iteration. **Restore** copies a snapshot back and rebuilds. The build limit is stated in the prompt and enforced by stopping the job two builds past it; the cost limit is passed to Claude Code as `--max-budget-usd`. Each job is saved to `output/_jobs/<id>/job.json` and reloaded when the server starts.
 
-The allow-list each job gets (edit only its own script and `output/`, run only voxtool commands for its own model) is described in [SECURITY.md](../SECURITY.md).
+The allow-list each job gets (edit only its own script and `output/`, run only voxtool commands for its own model) is described in [SECURITY.md](https://github.com/NangManCatDev/2DtoVoxel/blob/main/SECURITY.md).
 
 ## Conversions
 

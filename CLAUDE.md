@@ -33,6 +33,10 @@ When a new reference comes in, follow the `/voxelize <image path>` skill (`.clau
   intersection).
 - `voxtool/export.py` — greedy meshing → OBJ/PLY/GLB, sprite sheet + manifest.json, palette variants.
 - `voxtool/__main__.py` — the whole CLI. `voxtool/ui/` — web UI (`voxtool ui`, `py -m ui`, `2DtoVoxel.bat`, `2dtovoxel.sh`).
+- Packaging: `pyproject.toml` + `setup.py` (copies `.claude/skills/voxelize` into the wheel as `voxtool/skill/` and points
+  README links at GitHub for PyPI). `skill_source()` finds the skill in a checkout or the wheel; `voxtool ui` copies it into
+  a workspace that has none. Release = version in pyproject + changelog heading + tag `v<version>` → `release.yml`
+  (GitHub release + PyPI trusted publishing).
 - `models/<name>.py` — one build script per model. `NAME`, `REFERENCE`, `VIEW` (+`fov`); optional `SCORE_VIEW`, `CUTOUT`,
   `EXTRA_REFERENCES` (more pictures as `(path, view[, cutout])`, each scored too).
   Conversion results are `models/<name>.base.vox` (source data, committed) + a script that loads it.
@@ -71,6 +75,10 @@ and rebuilt another model, overwriting the user's MagicaVoxel edits.)
   `docs/troubleshooting` (each `.md` + `.ko.md`); keep README facts in sync with them. When you change one
   language, change the other; UI button names must match `i18n.js`. Images in `docs/images/`, About/topics in
   `.github/repo-meta.yml`. Contributor info: `CONTRIBUTING.md`.
+- `docs/` is also the GitHub Pages site (Jekyll, cayman theme): `_config.yml`, landing pages `index.md` / `index.ko.md`
+  (a short summary of the README with an FAQ; keep their facts in sync), `llms.txt`, `_includes/head-custom.html`
+  (structured data, mermaid). Guides there must not use `{{`/`{%` (Liquid) or front matter (GitHub shows it as a
+  table), and links out of `docs/` must be absolute GitHub URLs.
 
 ## CLI (`VT` = `py -m voxtool` / `python3 -m voxtool` / `voxtool`)
 ```

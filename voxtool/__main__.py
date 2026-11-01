@@ -556,10 +556,20 @@ def cmd_recolor(a):
 
 # ---------------------------------------------------------------- misc
 
+def skill_source() -> str | None:
+    """The /voxelize skill: .claude/skills/voxelize in a source checkout, voxtool/skill in a
+    pip install (setup.py copies it into the wheel)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for src in (os.path.join(os.path.dirname(here), ".claude", "skills", "voxelize"), os.path.join(here, "skill")):
+        if os.path.isfile(os.path.join(src, "SKILL.md")):
+            return src
+    return None
+
+
 def cmd_install_skill(a):
-    src = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".claude", "skills", "voxelize")
-    if not os.path.isdir(src):
-        raise RuntimeError("skill source not found; run this from a source checkout of 2DtoVoxel")
+    src = skill_source()
+    if not src:
+        raise RuntimeError("skill source not found; reinstall 2dtovoxel or run this from a source checkout")
     dest = os.path.join(os.path.expanduser(a.dest), "voxelize")
     shutil.copytree(src, dest, dirs_exist_ok=True)
     print(f"installed /voxelize -> {dest}")

@@ -2,7 +2,7 @@
 
 [English](README.md) · **한국어**
 
-**2DtoVoxel은 물체 하나가 담긴 그림(콘셉트 아트, 3D 렌더, 게임 스크린샷, 픽셀아트)을 [MagicaVoxel][magicavoxel]용 복셀 모델(`.vox` 파일)로 만듭니다.** [Claude Code][claude-code]가 그림을 보고 모델을 짧은 Python 빌드 스크립트로 작성합니다. 함께 들어 있는 `voxtool` 라이브러리가 그 스크립트로 `.vox` 파일과 미리보기를 만들고, 결과가 그림과 얼마나 닮았는지 숫자로 잽니다. Claude는 그 측정값을 읽고 스크립트를 고쳐 다시 빌드하고, 더 나아지지 않을 때까지 이 과정을 반복합니다. 결과로 `.vox` 파일과 스크립트가 남습니다. `.vox`는 MagicaVoxel에서 열어 계속 편집할 수 있고, 스크립트는 나중에 직접 고치거나 Claude에게 수정을 맡길 수 있습니다.
+**2DtoVoxel은 무료 오픈소스 이미지→복셀 변환 도구로, 물체 하나가 담긴 그림(콘셉트 아트, 3D 렌더, 게임 스크린샷, 픽셀아트)을 [MagicaVoxel][magicavoxel]용 복셀 모델(`.vox` 파일)로 만듭니다.** [Claude Code][claude-code]가 그림을 보고 모델을 짧은 Python 빌드 스크립트로 작성합니다. 함께 들어 있는 `voxtool` 라이브러리가 그 스크립트로 `.vox` 파일과 미리보기를 만들고, 결과가 그림과 얼마나 닮았는지 숫자로 잽니다. Claude는 그 측정값을 읽고 스크립트를 고쳐 다시 빌드하고, 더 나아지지 않을 때까지 이 과정을 반복합니다. 결과로 `.vox` 파일과 스크립트가 남습니다. `.vox`는 MagicaVoxel에서 열어 계속 편집할 수 있고, 스크립트는 나중에 직접 고치거나 Claude에게 수정을 맡길 수 있습니다.
 
 Claude 없이 되는 기능도 있습니다. 픽셀아트를 몇 초 만에 복셀로 바꾸고, 정면·측면·윗면 그림을 교차시켜 모델을 깎아 내며, 게임 에셋(스프라이트 시트, GLB / OBJ / PLY 메시, 팔레트 변형)을 내보냅니다.
 
@@ -106,6 +106,8 @@ python -m pip install -e .
 ```
 
 의존성과 `voxtool` 명령이 설치됩니다. 설치하지 않아도 프로젝트 폴더에서 Windows는 `py -m voxtool …`, macOS / Linux는 `python3 -m voxtool …`로 모든 명령을 쓸 수 있습니다. 모델, 레퍼런스, 출력물을 이 폴더 기준으로 찾으므로 명령은 프로젝트 폴더에서 실행하세요.
+
+**클론하지 않고:** `python -m pip install 2dtovoxel`로 같은 패키지를 PyPI에서 설치할 수 있습니다. 모델을 둘 빈 폴더를 만들고 거기서 `voxtool ui`를 실행하면 `models/`, `reference/`, `output/`을 만들고, Claude가 쓸 `/voxelize` 스킬을 `.claude/skills/`에 복사합니다. 다른 폴더의 Claude Code 대화에서 쓰려면 `voxtool install-skill`로 스킬을 `~/.claude/skills`에 복사하세요. 예제 모델, 테스트, 문서는 저장소에만 있습니다.
 
 ## 빠른 시작
 
@@ -497,7 +499,10 @@ voxtool recolor models/player_house.py --hue 120 --only roof,roof_hi,roof_dk
 │  ├─ __main__.py                 CLI
 │  └─ ui/                         웹 UI: server.py, jobs.py(Claude 작업, 프롬프트, 권한), static/
 ├─ tests/                         pytest (임시 폴더에서 실제 CLI와 UI 서버를 실행)
-├─ docs/                          자세한 안내서(영어 + 한국어)와 README 이미지
+├─ docs/                          자세한 안내서(영어 + 한국어), README 이미지, 웹사이트
+│                                 (GitHub Pages: _config.yml, index.md / index.ko.md, llms.txt)
+├─ setup.py                       wheel에 스킬을 넣고, PyPI용 README 링크를 바꿈
+├─ .github/workflows/             ci.yml(테스트 + 패키지 검사), release.yml(GitHub 릴리스 + PyPI)
 ├─ output/                        생성된 파일 (git 제외)
 ├─ .claude/skills/voxelize/       /voxelize 스킬
 └─ CLAUDE.md                      이 저장소에서 일하는 Claude Code를 위한 지침
@@ -510,9 +515,13 @@ python -m pip install -e ".[dev]"
 python -m pytest -q
 ```
 
-테스트는 임시 작업 폴더에서 네트워크 없이 모델을 빌드·채점·변환·내보내고, CLI를 실행하고, 실제 UI 서버를 띄웁니다. 20초 정도 걸립니다. CI는 Windows와 Ubuntu에서 Python 3.10과 3.12로 돌립니다. 기여 규칙(두 언어, UI 작업 권한, 테스트, 변경 기록)은 [CONTRIBUTING.md](CONTRIBUTING.md)에, 변경 내역은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
+테스트는 임시 작업 폴더에서 네트워크 없이 모델을 빌드·채점·변환·내보내고, CLI를 실행하고, 실제 UI 서버를 띄웁니다. 20초 정도 걸립니다. CI는 Windows와 Ubuntu에서 Python 3.10과 3.12로 돌리고, wheel을 빌드해 저장소 없이 설치되고 스킬을 찾는지도 확인합니다.
+
+릴리스하려면 `pyproject.toml`의 `version`을 정하고, 변경 기록의 "Unreleased" 제목을 그 버전으로 바꾸고, `v0.3.0` 같은 태그를 푸시합니다. `release.yml`이 패키지를 빌드하고, 그 변경 기록 절을 노트로 GitHub 릴리스를 만들고, PyPI에 올립니다. 기여 규칙(두 언어, UI 작업 권한, 테스트, 변경 기록)은 [CONTRIBUTING.md](CONTRIBUTING.md)에, 변경 내역은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
 
 ## 더 자세한 문서
+
+웹사이트 <https://nangmancatdev.github.io/2DtoVoxel/index.ko.html>에 한국어·영어 소개 페이지와 이 안내서들이 있습니다.
 
 | 안내서 | 내용 |
 |---|---|

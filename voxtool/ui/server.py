@@ -25,7 +25,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import numpy as np
 
-from ..__main__ import find_magicavoxel, open_in_magicavoxel, screenshot_magicavoxel
+from ..__main__ import find_magicavoxel, open_in_magicavoxel, screenshot_magicavoxel, skill_source
 from ..render import coarsen
 from ..vox_io import WRITER_CHUNKS, chunk_ids, merge_models, read_vox
 from .i18n import UserError, pick_lang
@@ -34,6 +34,10 @@ from .jobs import ROOT, JobManager, find_claude, generate_prompt, refine_prompt,
 STATIC = Path(__file__).resolve().parent / "static"
 for _d in ("models", "reference", "output"):
     (ROOT / _d).mkdir(exist_ok=True)
+# jobs follow .claude/skills/voxelize/SKILL.md; a workspace next to a pip install starts without it
+_SKILL = ROOT / ".claude" / "skills" / "voxelize"
+if not _SKILL.exists() and skill_source():
+    shutil.copytree(skill_source(), _SKILL)
 
 TOKEN = secrets.token_urlsafe(24)
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")

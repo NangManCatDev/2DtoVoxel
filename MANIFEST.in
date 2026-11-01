@@ -1,0 +1,3 @@
+# sdist: what setup.py needs to build the wheel (the skill it copies in, the README it rewrites)
+graft .claude/skills/voxelize
+include README.md LICENSE CHANGELOG.md

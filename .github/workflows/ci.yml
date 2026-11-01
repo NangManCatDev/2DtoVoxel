@@ -21,3 +21,26 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Test
         run: python -m pytest -q
+
+  package:
+    # what `pip install 2dtovoxel` gets: the wheel builds, PyPI can render its README, and the
+    # installed command finds the /voxelize skill without a checkout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check dist/*
+      - name: Install the wheel in a clean folder
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install dist/*.whl
+          cd "$(mktemp -d)"
+          /tmp/venv/bin/voxtool --help > /dev/null
+          /tmp/venv/bin/voxtool install-skill --dest skills
+          test -f skills/voxelize/SKILL.md

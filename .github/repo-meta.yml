@@ -1,9 +1,11 @@
-# GitHub "About" box: description and topics.
-# Apply in the repository's About settings (gear icon), or with: gh repo edit --description "..." --add-topic ...
+# GitHub "About" box: description, website and topics.
+# Apply in the repository's About settings (gear icon), or with: gh repo edit --description "..." --homepage ... --add-topic ...
+# The social preview image (Settings → General → Social preview) is docs/images/social-preview.png.
 description: >-
   Turn a reference image into an editable MagicaVoxel model. Claude writes a voxel build script,
   scores each build against your image and keeps fixing it. Web UI, CLI and Claude Code skill;
   quick pixel-art conversion, sprite sheets and GLB/OBJ export.
+homepage: https://nangmancatdev.github.io/2DtoVoxel/
 topics:
   # what it is
   - voxel

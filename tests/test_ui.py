@@ -133,8 +133,10 @@ def _post(url, body, token=None, lang="en"):
         return e.code, json.loads(e.read() or b"{}")
 
 
-def test_server_api_token_i18n_and_build(server):
+def test_server_api_token_i18n_and_build(server, workspace):
     url, token = server
+    # jobs follow the workspace's .claude/skills/voxelize/SKILL.md; a pip install starts without one
+    assert (workspace / ".claude" / "skills" / "voxelize" / "SKILL.md").is_file()
     models = json.loads(urllib.request.urlopen(url + "api/models").read())
     assert [m["slug"] for m in models] == ["hut"]
     assert _post(url + "api/jobs", {"kind": "build", "name": "hut"})[0] == 403       # no token
