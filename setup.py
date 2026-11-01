@@ -10,21 +10,11 @@ import re
 import shutil
 from pathlib import Path
 
-from setuptools import setup
-from setuptools.command.build_py import build_py
-
 HERE = Path(__file__).resolve().parent
 SKILL = HERE / ".claude" / "skills" / "voxelize"
 REPO = "https://github.com/NangManCatDev/2DtoVoxel"
 RAW = "https://raw.githubusercontent.com/NangManCatDev/2DtoVoxel/main"
 LINK = re.compile(r"(\]\(|^\[[^\]]+\]: )(?!https?://|mailto:)([^)\s]+)", re.M)
-
-
-class BuildPy(build_py):
-    def run(self):
-        super().run()
-        if SKILL.is_dir():
-            shutil.copytree(SKILL, Path(self.build_lib) / "voxtool" / "skill", dirs_exist_ok=True)
 
 
 def pypi_readme(text: str) -> str:
@@ -41,7 +31,16 @@ def pypi_readme(text: str) -> str:
     return LINK.sub(absolute, text)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # setuptools imported here: tests import pypi_readme where it isn't installed
+    from setuptools import setup
+    from setuptools.command.build_py import build_py
+
+    class BuildPy(build_py):
+        def run(self):
+            super().run()
+            if SKILL.is_dir():
+                shutil.copytree(SKILL, Path(self.build_lib) / "voxtool" / "skill", dirs_exist_ok=True)
+
     setup(cmdclass={"build_py": BuildPy},
           long_description=pypi_readme((HERE / "README.md").read_text(encoding="utf-8")),
           long_description_content_type="text/markdown")
